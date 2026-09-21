@@ -1,0 +1,23 @@
+/vendor/
+/.idea/
+/.vscode/
+/.fleet/
+/.phpunit.cache/
+/.phpunit.result.cache
+/coverage/
+/build/
+/dist/
+/tmp/
+/.env
+/.env.*
+*.log
+*.cache
+*.tmp
+*.bak
+*.swp
+Thumbs.db
+.DS_Store
+
+# Runtime files must stay outside the module repository.
+/runtime/
+/uploads/

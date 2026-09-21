@@ -1,0 +1,39 @@
+{
+  "name": "yurygorshkov/import-from-excel",
+  "description": "Secure, resumable Excel/CSV imports for 1C-Bitrix D7",
+  "type": "bitrix-d7-module",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Yuriy Gorshkov",
+      "email": "106753025+YuryGorshkov@users.noreply.github.com"
+    }
+  ],
+  "require": {
+    "php": "^8.1",
+    "phpoffice/phpspreadsheet": "^3.10.8"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^10.5",
+    "squizlabs/php_codesniffer": "^3.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "WebEnot\\ImportExcel\\": "lib/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "WebEnot\\ImportExcel\\Tests\\": "tests/"
+    }
+  },
+  "config": {
+    "allow-plugins": {},
+    "optimize-autoloader": true,
+    "sort-packages": true
+  },
+  "scripts": {
+    "test": "phpunit",
+    "lint": "phpcs --standard=PSR12 --exclude=Generic.Files.LineLength lib tests"
+  }
+}
