@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-09-21
+
+- Added a single-file web installer for Bitrix administrators.
+- Added self-contained release archives with production dependencies.
+- Added SHA-256 verification and ZIP path validation to the installer.
+- Added an automated GitHub release workflow for version tags.
+
 ## 0.1.0 - 2026-09-21
 
 - Initial clean-room implementation.

@@ -1,0 +1,53 @@
+name: Build installable release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: ctype, dom, fileinfo, gd, iconv, libxml, mbstring, simplexml, xml, xmlreader, xmlwriter, zip, zlib
+          tools: composer:v2
+
+      - name: Install production dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --classmap-authoritative
+
+      - name: Build module archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/webenot.importexcel
+          rsync -a ./ build/webenot.importexcel/ \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='build/' \
+            --exclude='dist/' \
+            --exclude='tests/' \
+            --exclude='phpunit.xml' \
+            --exclude='install-import-excel.php'
+          cd build
+          zip -q -r ../webenot.importexcel.zip webenot.importexcel
+          cd ..
+          sha256sum webenot.importexcel.zip > webenot.importexcel.zip.sha256
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            webenot.importexcel.zip \
+            webenot.importexcel.zip.sha256 \
+            install-import-excel.php \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

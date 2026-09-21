@@ -27,6 +27,17 @@
 
 ## Установка
 
+### Вариант 1 — один файл, без SSH и Composer
+
+1. Скачайте [`install-import-excel.php`](https://github.com/YuryGorshkov/IMPORT_FROM_EXCEL/releases/latest/download/install-import-excel.php).
+2. Загрузите этот файл в корень сайта рядом с папкой `/bitrix`.
+3. Войдите в Bitrix как администратор и откройте `https://ваш-сайт/install-import-excel.php`.
+4. Нажмите **Установить модуль**.
+
+Установщик скачает готовую сборку с зависимостями, проверит SHA-256, безопасно распакует её в `/local/modules/webenot.importexcel`, создаст таблицы и зарегистрирует модуль. По умолчанию установщик удаляет себя после успешного завершения.
+
+### Вариант 2 — через Git и Composer
+
 ```bash
 cd /path/to/site/local/modules
 git clone https://github.com/YuryGorshkov/IMPORT_FROM_EXCEL.git webenot.importexcel
