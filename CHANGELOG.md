@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-09-21
+
+- Pinned Composer's build platform to PHP 8.1 for portable release archives.
+
 ## 0.2.0 - 2026-09-21
 
 - Added a single-file web installer for Bitrix administrators.
