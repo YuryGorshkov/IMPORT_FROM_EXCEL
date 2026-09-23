@@ -45,7 +45,10 @@ class webenot_importexcel extends CModule
             return;
         }
 
-        ModuleManager::registerModule(self::MODULE_ID);
+        if (!ModuleManager::isModuleInstalled(self::MODULE_ID)) {
+            ModuleManager::registerModule(self::MODULE_ID);
+        }
+
         require_once dirname(__DIR__) . '/include.php';
         $this->installDb();
         $this->installFiles();

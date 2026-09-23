@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 - 2026-09-23
+
+- Made repeated module installation idempotent.
+- Made CLI source validation failures return a clear message and exit code 5.
+
 ## 0.2.1 - 2026-09-21
 
 - Pinned Composer's build platform to PHP 8.1 for portable release archives.

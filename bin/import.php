@@ -40,10 +40,11 @@ if (!Loader::includeModule('webenot.importexcel')) {
     exit(3);
 }
 
-$sourcePath = ServiceFactory::filePolicy()->validate($sourcePath);
-$jobId = ServiceFactory::jobs()->create($profileId, $sourcePath, $sheet, $dryRun);
-
+$jobId = 0;
 try {
+    $sourcePath = ServiceFactory::filePolicy()->validate($sourcePath);
+    $jobId = ServiceFactory::jobs()->create($profileId, $sourcePath, $sheet, $dryRun);
+
     do {
         $job = ServiceFactory::jobs()->acquire($jobId);
         $profile = ServiceFactory::profiles()->get((int) $job['PROFILE_ID']);
@@ -63,7 +64,9 @@ try {
     fwrite(STDOUT, json_encode($job, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
     exit((int) $job['ROWS_ERRORS'] > 0 ? 4 : 0);
 } catch (Throwable $exception) {
-    ServiceFactory::jobs()->fail($jobId, $exception);
+    if ($jobId > 0) {
+        ServiceFactory::jobs()->fail($jobId, $exception);
+    }
     fwrite(STDERR, $exception->getMessage() . PHP_EOL);
     exit(5);
 }
