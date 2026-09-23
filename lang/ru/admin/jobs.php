@@ -1,0 +1,31 @@
+<?php
+
+$MESS['WIE_JOBS_MODULE_ERROR'] = 'Модуль «Импорт из Excel» не установлен.';
+$MESS['WIE_JOBS_ACCESS_DENIED'] = 'Недостаточно прав для просмотра истории импорта.';
+$MESS['WIE_JOBS_ROLLBACK_DONE'] = 'Откат завершён. Восстановлено записей: #COUNT#.';
+$MESS['WIE_JOBS_NAV'] = 'Задания';
+$MESS['WIE_JOBS_PROFILE'] = 'Профиль';
+$MESS['WIE_JOBS_STATUS'] = 'Состояние';
+$MESS['WIE_JOBS_MODE'] = 'Режим';
+$MESS['WIE_JOBS_READ'] = 'Прочитано';
+$MESS['WIE_JOBS_ADDED'] = 'Добавлено';
+$MESS['WIE_JOBS_UPDATED'] = 'Обновлено';
+$MESS['WIE_JOBS_SKIPPED'] = 'Пропущено';
+$MESS['WIE_JOBS_ERRORS'] = 'Ошибок';
+$MESS['WIE_JOBS_CREATED'] = 'Создано';
+$MESS['WIE_JOBS_STATUS_NEW'] = 'Ожидает';
+$MESS['WIE_JOBS_STATUS_RUNNING'] = 'Выполняется';
+$MESS['WIE_JOBS_STATUS_COMPLETED'] = 'Завершено';
+$MESS['WIE_JOBS_STATUS_FAILED'] = 'Ошибка';
+$MESS['WIE_JOBS_STATUS_CANCELLED'] = 'Отменено';
+$MESS['WIE_JOBS_STATUS_ROLLED_BACK'] = 'Откачено';
+$MESS['WIE_JOBS_STATUS_UNKNOWN'] = 'Неизвестно';
+$MESS['WIE_JOBS_MODE_DRY'] = 'Проверка';
+$MESS['WIE_JOBS_MODE_COMMIT'] = 'Запись';
+$MESS['WIE_JOBS_ROLLBACK'] = 'Откатить изменения';
+$MESS['WIE_JOBS_ROLLBACK_CONFIRM'] = 'Вернуть каталог к состоянию до этого импорта? Добавленные элементы будут удалены, обновлённые — восстановлены.';
+$MESS['WIE_JOBS_RUN'] = 'Запустить импорт';
+$MESS['WIE_JOBS_TITLE'] = 'История импорта и откат';
+$MESS['WIE_JOBS_INTRO_TITLE'] = 'Все запуски в одном журнале';
+$MESS['WIE_JOBS_INTRO'] = 'Режим «Проверка» не меняет каталог. Для успешно завершённого режима «Запись» доступен откат — он отменяет изменения конкретного задания.';
+$MESS['WIE_JOBS_INTRO_HINT'] = 'Счётчики помогают быстро оценить результат. Ошибки отдельных строк учитываются отдельно; технические подробности сохраняются в журнале задания.';

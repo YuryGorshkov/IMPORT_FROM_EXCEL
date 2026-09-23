@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 - 2026-09-23
+
+- Redesigned all Bitrix administration pages with a clear card-based layout.
+- Replaced the raw mapping JSON editor with a guided column mapping table.
+- Added descriptive tooltips for profile, mapping, import and history settings.
+- Replaced the target IBlock numeric input with a named catalog selector.
+- Added localized status badges, safer dry-run guidance and import result cards.
+- Made profile save redirects work behind reverse proxies and forwarded ports.
+- Updated the Russian documentation to match the new workflow.
+
 ## 0.2.2 - 2026-09-23
 
 - Made repeated module installation idempotent.
