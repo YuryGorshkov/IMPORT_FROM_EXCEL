@@ -99,6 +99,7 @@ $form = [
         'chunk_size' => 200,
         'unique_target' => 'FIELD:XML_ID',
         'write_mode' => 'upsert',
+        'element_code_source' => 'name',
         'auto_create_properties' => true,
         'stop_on_error' => false,
         'delimiter' => ';',
@@ -118,6 +119,7 @@ $targetMode = (string) ($_POST['target_mode'] ?? 'existing');
 $newIblockName = trim((string) ($_POST['new_iblock_name'] ?? ''));
 $newIblockType = trim((string) ($_POST['new_iblock_type'] ?? 'catalog'));
 $newIblockCode = trim((string) ($_POST['new_iblock_code'] ?? ''));
+$createdIblock = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     $form['name'] = trim((string) ($_POST['name'] ?? ''));
@@ -128,12 +130,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     if (!in_array($writeMode, ['upsert', 'insert', 'update'], true)) {
         $writeMode = 'upsert';
     }
+    $elementCodeSource = (string) ($_POST['element_code_source'] ?? 'name');
+    if (!in_array($elementCodeSource, ['name', 'unique', 'none'], true)) {
+        $elementCodeSource = 'name';
+    }
     $form['options'] = [
         'header_row' => $headerRow,
         'start_row' => max($headerRow + 1, (int) ($_POST['start_row'] ?? ($headerRow + 1))),
         'chunk_size' => min(1000, max(10, (int) ($_POST['chunk_size'] ?? 200))),
         'unique_target' => strtoupper(trim((string) ($_POST['unique_target'] ?? 'FIELD:XML_ID'))),
         'write_mode' => $writeMode,
+        'element_code_source' => $elementCodeSource,
         'auto_create_properties' => isset($_POST['auto_create_properties']),
         'stop_on_error' => isset($_POST['stop_on_error']),
         'delimiter' => (string) ($_POST['delimiter'] ?? ';'),
@@ -242,6 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                     $newIblockType,
                     $newIblockCode
                 );
+                $createdIblock = true;
                 $targetMode = 'existing';
             } elseif ($form['target_id'] < 1) {
                 throw new InvalidArgumentException((string) Loc::getMessage('WIE_PROFILE_TARGET_REQUIRED'));
@@ -260,7 +268,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                 $query = [
                     'profile_id' => $id,
                     'lang' => LANGUAGE_ID,
+                    'profile_saved' => 'Y',
                 ];
+                if ($createdIblock) {
+                    $query['iblock_created'] = 'Y';
+                }
                 if ($previewToken !== '') {
                     $sourcePath = ServiceFactory::previewUploads()->transfer(
                         $previewToken,
@@ -275,11 +287,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
             if ($previewToken !== '') {
                 ServiceFactory::previewUploads()->remove($previewToken);
             }
-            header(
-                'Location: webenot_importexcel_profile_edit.php?ID=' . $id . '&lang=' . LANGUAGE_ID . '&saved=Y',
-                true,
-                302
-            );
+            $query = ['ID' => $id, 'lang' => LANGUAGE_ID, 'saved' => 'Y'];
+            if ($createdIblock) {
+                $query['iblock_created'] = 'Y';
+            }
+            header('Location: webenot_importexcel_profile_edit.php?' . http_build_query($query), true, 302);
             exit;
         }
     } catch (Throwable $exception) {
@@ -333,6 +345,9 @@ require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_admin_a
 AdminUi::renderStyles();
 if (($_GET['saved'] ?? '') === 'Y') {
     CAdminMessage::ShowMessage(['MESSAGE' => Loc::getMessage('WIE_PROFILE_SAVED'), 'TYPE' => 'OK']);
+}
+if (($_GET['iblock_created'] ?? '') === 'Y') {
+    CAdminMessage::ShowMessage(['MESSAGE' => Loc::getMessage('WIE_PROFILE_IBLOCK_CREATED'), 'TYPE' => 'OK']);
 }
 foreach ($errors as $error) {
     CAdminMessage::ShowMessage(['MESSAGE' => $error, 'TYPE' => 'ERROR']);
@@ -558,6 +573,14 @@ foreach ($errors as $error) {
                     <select id="wie-mode" name="write_mode">
                         <?php foreach (['upsert' => 'WIE_PROFILE_MODE_UPSERT', 'insert' => 'WIE_PROFILE_MODE_INSERT', 'update' => 'WIE_PROFILE_MODE_UPDATE'] as $value => $message) : ?>
                             <option value="<?= $value ?>"<?= ($form['options']['write_mode'] ?? 'upsert') === $value ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage($message)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="wie-field">
+                    <label class="wie-label" for="wie-element-code-source"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_ELEMENT_CODE_SOURCE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_ELEMENT_CODE_SOURCE_HINT')); ?></label>
+                    <select id="wie-element-code-source" name="element_code_source">
+                        <?php foreach (['name' => 'WIE_PROFILE_ELEMENT_CODE_NAME', 'unique' => 'WIE_PROFILE_ELEMENT_CODE_UNIQUE', 'none' => 'WIE_PROFILE_ELEMENT_CODE_NONE'] as $value => $message) : ?>
+                            <option value="<?= $value ?>"<?= ($form['options']['element_code_source'] ?? 'name') === $value ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage($message)) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>

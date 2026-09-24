@@ -203,6 +203,23 @@ $APPLICATION->SetTitle((string) Loc::getMessage('WIE_RUN_TITLE'));
 require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_admin_after.php';
 
 AdminUi::renderStyles();
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['profile_saved'] ?? '') === 'Y') {
+    CAdminMessage::ShowMessage(['MESSAGE' => Loc::getMessage('WIE_RUN_PROFILE_SAVED'), 'TYPE' => 'OK']);
+}
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['iblock_created'] ?? '') === 'Y') {
+    CAdminMessage::ShowMessage(['MESSAGE' => Loc::getMessage('WIE_RUN_IBLOCK_CREATED'), 'TYPE' => 'OK']);
+}
+if ($job && $job['STATUS'] === JobTable::STATUS_COMPLETED && $job['MODE'] === 'commit') {
+    CAdminMessage::ShowMessage([
+        'MESSAGE' => Loc::getMessage('WIE_RUN_IMPORT_SUCCESS_NOTICE', [
+            '#READ#' => (string) $job['ROWS_READ'],
+            '#ADDED#' => (string) $job['ROWS_ADDED'],
+            '#UPDATED#' => (string) $job['ROWS_UPDATED'],
+            '#ERRORS#' => (string) $job['ROWS_ERRORS'],
+        ]),
+        'TYPE' => 'OK',
+    ]);
+}
 foreach ($errors as $error) {
     CAdminMessage::ShowMessage(['MESSAGE' => $error, 'TYPE' => 'ERROR']);
 }

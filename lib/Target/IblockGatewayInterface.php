@@ -12,6 +12,8 @@ interface IblockGatewayInterface
 
     public function find(int $iblockId, string $uniqueTarget, mixed $value): ?array;
 
+    public function uniqueCode(int $iblockId, string $baseCode, int $excludeElementId = 0): string;
+
     public function snapshot(int $elementId): array;
 
     public function add(int $iblockId, MappedRow $row): int;

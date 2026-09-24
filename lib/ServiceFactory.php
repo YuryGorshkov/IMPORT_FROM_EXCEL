@@ -19,6 +19,7 @@ use WebEnot\ImportExcel\Reporting\OrmReporter;
 use WebEnot\ImportExcel\Security\SourceFilePolicy;
 use WebEnot\ImportExcel\Security\UploadStorage;
 use WebEnot\ImportExcel\Target\BitrixIblockGateway;
+use WebEnot\ImportExcel\Target\ElementCodeGenerator;
 use WebEnot\ImportExcel\Target\IblockCreator;
 use WebEnot\ImportExcel\Target\IblockTarget;
 use WebEnot\ImportExcel\Validation\SourceStructureValidator;
@@ -82,7 +83,7 @@ final class ServiceFactory
         return new ImportRunner(
             self::reader(),
             new RowMapper(new Transformer(), new MappingValidator()),
-            new IblockTarget($gateway),
+            new IblockTarget($gateway, new ElementCodeGenerator(new HeaderNormalizer())),
             new OrmReporter()
         );
     }

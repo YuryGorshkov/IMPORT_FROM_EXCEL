@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 - 2026-09-24
+
+- Added profile-level element code generation from the item name or unique field.
+- Added collision-safe suffixes while preserving existing non-empty element codes.
+- Added prominent Bitrix notifications after profile save, IBlock creation and completed import.
+
 ## 0.5.0 - 2026-09-24
 
 - Added inline IBlock creation while configuring an import profile.

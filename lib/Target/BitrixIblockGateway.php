@@ -68,6 +68,36 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         return $matches[0] ?? null;
     }
 
+    public function uniqueCode(int $iblockId, string $baseCode, int $excludeElementId = 0): string
+    {
+        $baseCode = trim($baseCode, '-');
+        if ($baseCode === '') {
+            return '';
+        }
+
+        $code = $baseCode;
+        $suffix = 2;
+        do {
+            $filter = ['IBLOCK_ID' => $iblockId, '=CODE' => $code, 'CHECK_PERMISSIONS' => 'N'];
+            if ($excludeElementId > 0) {
+                $filter['!ID'] = $excludeElementId;
+            }
+            $exists = (bool) \CIBlockElement::GetList(
+                [],
+                $filter,
+                false,
+                ['nTopCount' => 1],
+                ['ID']
+            )->Fetch();
+            if (!$exists) {
+                return $code;
+            }
+
+            $tail = '-' . $suffix++;
+            $code = substr($baseCode, 0, 50 - strlen($tail)) . $tail;
+        } while (true);
+    }
+
     public function snapshot(int $elementId): array
     {
         $element = \CIBlockElement::GetList(

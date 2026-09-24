@@ -47,4 +47,10 @@ final class ImportProfile
         $mode = (string) ($this->options['write_mode'] ?? 'upsert');
         return in_array($mode, ['insert', 'update', 'upsert'], true) ? $mode : 'upsert';
     }
+
+    public function elementCodeSource(): string
+    {
+        $source = (string) ($this->options['element_code_source'] ?? 'name');
+        return in_array($source, ['name', 'unique', 'none'], true) ? $source : 'name';
+    }
 }
