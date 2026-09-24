@@ -14,7 +14,7 @@ interface IblockGatewayInterface
 
     public function uniqueCode(int $iblockId, string $baseCode, int $excludeElementId = 0): string;
 
-    public function resolveSectionPath(int $iblockId, array $names, bool $create): SectionPathResult;
+    public function resolveSectionPath(int $iblockId, array $levels, bool $create): SectionPathResult;
 
     public function snapshot(int $elementId): array;
 
@@ -27,4 +27,6 @@ interface IblockGatewayInterface
     public function restore(int $elementId, array $snapshot): void;
 
     public function deleteSectionsIfEmpty(array $sectionIds): void;
+
+    public function restoreSections(array $snapshots): void;
 }

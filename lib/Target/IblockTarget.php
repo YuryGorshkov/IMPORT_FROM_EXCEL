@@ -40,7 +40,7 @@ final class IblockTarget
             return new TargetResult('skipped', (int) $existing['ID']);
         }
 
-        [$row, $createdSectionIds] = $this->withSectionPath($profile, $row, !$dryRun);
+        [$row, $sectionResult] = $this->withSectionPath($profile, $row, !$dryRun);
 
         if ($existing === null) {
             $row = $this->withElementCode($profile, $row);
@@ -51,14 +51,16 @@ final class IblockTarget
                 $id = $this->gateway->add($profile->targetId, $row);
                 $after = $this->gateway->snapshot($id);
             } catch (\Throwable $exception) {
-                try {
-                    $this->gateway->deleteSectionsIfEmpty($createdSectionIds);
-                } catch (\Throwable) {
-                }
+                $this->rollbackSectionChanges($sectionResult);
                 throw $exception;
             }
-            $after['created_section_ids'] = $createdSectionIds;
-            return new TargetResult('added', $id, [], $after);
+            $after['created_section_ids'] = $sectionResult->createdIds;
+            return new TargetResult(
+                'added',
+                $id,
+                ['section_snapshots' => $sectionResult->beforeSnapshots],
+                $after
+            );
         }
 
         $id = (int) $existing['ID'];
@@ -72,17 +74,15 @@ final class IblockTarget
         if ($dryRun) {
             return new TargetResult('updated', $id, $before, $this->previewData($row));
         }
+        $before['section_snapshots'] = $sectionResult->beforeSnapshots;
         try {
             $this->gateway->update($id, $row);
             $after = $this->gateway->snapshot($id);
         } catch (\Throwable $exception) {
-            try {
-                $this->gateway->deleteSectionsIfEmpty($createdSectionIds);
-            } catch (\Throwable) {
-            }
+            $this->rollbackSectionChanges($sectionResult);
             throw $exception;
         }
-        $after['created_section_ids'] = $createdSectionIds;
+        $after['created_section_ids'] = $sectionResult->createdIds;
         return new TargetResult('updated', $id, $before, $after);
     }
 
@@ -120,26 +120,38 @@ final class IblockTarget
     }
 
     /**
-     * @return array{0: MappedRow, 1: list<int>}
+     * @return array{0: MappedRow, 1: SectionPathResult}
      */
     private function withSectionPath(ImportProfile $profile, MappedRow $row, bool $create): array
     {
-        $names = SectionPath::normalize($row->sections);
-        if ($names === []) {
-            return [$row, []];
+        $levels = SectionPath::normalize($row->sections);
+        if ($levels === []) {
+            return [$row, new SectionPathResult(null)];
         }
 
-        $result = $this->gateway->resolveSectionPath($profile->targetId, $names, $create);
+        $result = $this->gateway->resolveSectionPath($profile->targetId, $levels, $create);
         if ($result->sectionId === null) {
-            return [$row, $result->createdIds];
+            return [$row, $result];
         }
 
         $fields = $row->fields;
         $fields['IBLOCK_SECTION_ID'] = $result->sectionId;
         return [
             new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections),
-            $result->createdIds,
+            $result,
         ];
+    }
+
+    private function rollbackSectionChanges(SectionPathResult $result): void
+    {
+        try {
+            $this->gateway->restoreSections($result->beforeSnapshots);
+        } catch (\Throwable) {
+        }
+        try {
+            $this->gateway->deleteSectionsIfEmpty($result->createdIds);
+        } catch (\Throwable) {
+        }
     }
 
     private function previewData(MappedRow $row): array

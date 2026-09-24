@@ -7,6 +7,7 @@ use Bitrix\Main\Localization\Loc;
 use WebEnot\ImportExcel\Admin\AdminUi;
 use WebEnot\ImportExcel\Discovery\HeaderRowDetector;
 use WebEnot\ImportExcel\Mapping\MappingValidator;
+use WebEnot\ImportExcel\Mapping\SectionFieldCatalog;
 use WebEnot\ImportExcel\Mapping\SectionPath;
 use WebEnot\ImportExcel\Orm\ProfileTable;
 use WebEnot\ImportExcel\ServiceFactory;
@@ -157,6 +158,18 @@ $elementFieldGroups = [
         'PREVIEW_TEXT', 'PREVIEW_TEXT_TYPE', 'DETAIL_TEXT', 'DETAIL_TEXT_TYPE',
     ],
     'WIE_PROFILE_GROUP_IMAGES' => ['PREVIEW_PICTURE', 'DETAIL_PICTURE'],
+];
+$sectionFieldMessages = [
+    'ID' => 'WIE_PROFILE_SECTION_FIELD_ID',
+    'NAME' => 'WIE_PROFILE_SECTION_FIELD_NAME',
+    'CODE' => 'WIE_PROFILE_SECTION_FIELD_CODE',
+    'XML_ID' => 'WIE_PROFILE_SECTION_FIELD_XML_ID',
+    'ACTIVE' => 'WIE_PROFILE_SECTION_FIELD_ACTIVE',
+    'SORT' => 'WIE_PROFILE_SECTION_FIELD_SORT',
+    'DESCRIPTION' => 'WIE_PROFILE_SECTION_FIELD_DESCRIPTION',
+    'DESCRIPTION_TYPE' => 'WIE_PROFILE_SECTION_FIELD_DESCRIPTION_TYPE',
+    'PICTURE' => 'WIE_PROFILE_SECTION_FIELD_PICTURE',
+    'DETAIL_PICTURE' => 'WIE_PROFILE_SECTION_FIELD_DETAIL_PICTURE',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
@@ -590,11 +603,15 @@ foreach ($errors as $error) {
                                                     <?php endforeach; ?>
                                                 </optgroup>
                                             <?php endforeach; ?>
-                                            <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_SECTIONS')) ?>">
-                                                <?php for ($level = 1; $level <= SectionPath::MAX_LEVEL; $level++) : ?>
-                                                    <option value="SECTION:<?= $level ?>"<?= $destination === 'SECTION:' . $level ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_SECTION_LEVEL'), $level)) ?></option>
-                                                <?php endfor; ?>
-                                            </optgroup>
+                                            <?php for ($level = 1; $level <= SectionPath::MAX_LEVEL; $level++) : ?>
+                                                <optgroup label="<?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_SECTION_LEVEL_GROUP'), $level)) ?>">
+                                                    <?php foreach (SectionFieldCatalog::codes() as $sectionFieldCode) :
+                                                        $sectionDestination = SectionPath::target($level, $sectionFieldCode);
+                                                        ?>
+                                                        <option value="<?= htmlspecialcharsbx($sectionDestination) ?>"<?= $destination === $sectionDestination ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage($sectionFieldMessages[$sectionFieldCode])) ?></option>
+                                                    <?php endforeach; ?>
+                                                </optgroup>
+                                            <?php endfor; ?>
                                         </select>
                                         <span class="wie-system-code" data-fixed-destination<?= $destination === 'PROPERTY' ? ' hidden' : '' ?>><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SYSTEM_CODE')) ?></span><code data-destination-code><?= htmlspecialcharsbx($destination) ?></code></span>
                                         <input name="mapping_rows[<?= (int) $index ?>][property_code]" data-property-code required pattern="[A-Z][A-Z0-9_]*" value="<?= htmlspecialcharsbx($targetType === 'PROPERTY' ? $targetCode : '') ?>"<?= $targetType === 'PROPERTY' ? '' : ' hidden disabled' ?> aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_CODE')) ?>">

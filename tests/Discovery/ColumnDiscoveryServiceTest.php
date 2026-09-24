@@ -41,8 +41,8 @@ final class ColumnDiscoveryServiceTest extends TestCase
         $mapping = $service->discover($this->file, null);
 
         self::assertSame('FIELD:NAME', $mapping[0]['target']);
-        self::assertSame('SECTION:1', $mapping[1]['target']);
-        self::assertSame('SECTION:2', $mapping[2]['target']);
+        self::assertSame('SECTION:1:NAME', $mapping[1]['target']);
+        self::assertSame('SECTION:2:NAME', $mapping[2]['target']);
         self::assertSame('PROPERTY:MOSHCHNOST_DVIGATELYA', $mapping[3]['target']);
         self::assertSame('PROPERTY:MOSHCHNOST_DVIGATELYA_2', $mapping[4]['target']);
         self::assertSame('Мощность двигателя', $mapping[3]['label']);

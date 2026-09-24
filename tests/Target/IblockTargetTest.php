@@ -67,20 +67,49 @@ final class IblockTargetTest extends TestCase
             ['NAME' => 'Рукав'],
             ['ARTIKUL' => 'ART-1'],
             [],
-            [1 => 'Гидравлические рукава', 2 => 'Длинные гидравлические рукава']
+            [
+                1 => ['NAME' => 'Гидравлические рукава', 'CODE' => 'hoses'],
+                2 => ['NAME' => 'Длинные гидравлические рукава'],
+            ]
         );
 
         $result = $target->apply($this->profile('name'), $row, true);
 
         self::assertSame([
             'iblock_id' => 5,
-            'names' => ['Гидравлические рукава', 'Длинные гидравлические рукава'],
+            'levels' => [
+                ['NAME' => 'Гидравлические рукава', 'CODE' => 'hoses'],
+                ['NAME' => 'Длинные гидравлические рукава'],
+            ],
             'create' => false,
         ], $gateway->sectionPaths[0]);
         self::assertSame(
-            ['Гидравлические рукава', 'Длинные гидравлические рукава'],
+            [
+                ['NAME' => 'Гидравлические рукава', 'CODE' => 'hoses'],
+                ['NAME' => 'Длинные гидравлические рукава'],
+            ],
             $result->after['sections']
         );
+    }
+
+    public function testKeepsCreatedSectionIdsForRollbackAfterRealImport(): void
+    {
+        $gateway = new CodeCaptureGateway();
+        $target = $this->target($gateway);
+        $row = new MappedRow(
+            2,
+            ['NAME' => 'Рукав'],
+            ['ARTIKUL' => 'ART-1'],
+            [],
+            [
+                1 => ['NAME' => 'Гидравлические рукава'],
+                2 => ['NAME' => 'Длинные гидравлические рукава'],
+            ]
+        );
+
+        $result = $target->apply($this->profile('name'), $row, false);
+
+        self::assertSame([70, 77], $result->after['created_section_ids']);
     }
 
     private function target(CodeCaptureGateway $gateway): IblockTarget

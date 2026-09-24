@@ -31,9 +31,9 @@ final class CodeCaptureGateway implements IblockGatewayInterface
         return $baseCode;
     }
 
-    public function resolveSectionPath(int $iblockId, array $names, bool $create): SectionPathResult
+    public function resolveSectionPath(int $iblockId, array $levels, bool $create): SectionPathResult
     {
-        $this->sectionPaths[] = ['iblock_id' => $iblockId, 'names' => $names, 'create' => $create];
+        $this->sectionPaths[] = ['iblock_id' => $iblockId, 'levels' => $levels, 'create' => $create];
         return new SectionPathResult($create ? 77 : null, $create ? [70, 77] : []);
     }
 
@@ -62,5 +62,9 @@ final class CodeCaptureGateway implements IblockGatewayInterface
     public function deleteSectionsIfEmpty(array $sectionIds): void
     {
         $this->deletedSectionIds = $sectionIds;
+    }
+
+    public function restoreSections(array $snapshots): void
+    {
     }
 }

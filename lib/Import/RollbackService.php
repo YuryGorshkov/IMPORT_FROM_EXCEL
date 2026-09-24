@@ -24,12 +24,14 @@ final class RollbackService
             'order' => ['ID' => 'DESC'],
         ]);
         while ($change = $changes->fetch()) {
+            $before = Json::decode((string) $change['BEFORE_DATA']);
             $after = Json::decode((string) $change['AFTER_DATA']);
             if ($change['ACTION'] === 'added') {
                 $this->gateway->delete((int) $change['ENTITY_ID']);
             } elseif ($change['ACTION'] === 'updated') {
-                $this->gateway->restore((int) $change['ENTITY_ID'], Json::decode((string) $change['BEFORE_DATA']));
+                $this->gateway->restore((int) $change['ENTITY_ID'], $before);
             }
+            $this->gateway->restoreSections((array) ($before['section_snapshots'] ?? []));
             $this->gateway->deleteSectionsIfEmpty((array) ($after['created_section_ids'] ?? []));
             ChangeTable::update((int) $change['ID'], ['ROLLED_BACK' => 'Y']);
             $restored++;

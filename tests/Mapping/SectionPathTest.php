@@ -13,13 +13,27 @@ final class SectionPathTest extends TestCase
     public function testNormalizesContiguousHierarchy(): void
     {
         self::assertSame(
-            ['Гидравлические рукава', 'Длинные гидравлические рукава'],
+            [
+                ['NAME' => 'Гидравлические рукава'],
+                ['NAME' => 'Длинные гидравлические рукава'],
+            ],
             SectionPath::normalize([
                 1 => ' Гидравлические рукава ',
                 2 => ' Длинные гидравлические рукава ',
                 3 => '',
             ])
         );
+    }
+
+    public function testNormalizesMultipleFieldsForEveryLevel(): void
+    {
+        self::assertSame([
+            ['NAME' => 'Рукава', 'CODE' => 'hoses', 'SORT' => 100],
+            ['NAME' => 'Длинные рукава', 'DESCRIPTION' => 'Описание'],
+        ], SectionPath::normalize([
+            1 => ['NAME' => ' Рукава ', 'CODE' => ' hoses ', 'SORT' => 100],
+            2 => ['NAME' => ' Длинные рукава ', 'DESCRIPTION' => ' Описание '],
+        ]));
     }
 
     public function testRejectsGapInHierarchy(): void
@@ -37,8 +51,17 @@ final class SectionPathTest extends TestCase
             ['column' => 'C', 'code' => 'RAZDEL_2_GO_UROVNYA', 'target' => 'PROPERTY:RAZDEL_2_GO_UROVNYA'],
         ]);
 
-        self::assertSame('SECTION:1', $mapping[0]['target']);
-        self::assertSame('SECTION:2', $mapping[1]['target']);
+        self::assertSame('SECTION:1:NAME', $mapping[0]['target']);
+        self::assertSame('SECTION:2:NAME', $mapping[1]['target']);
+    }
+
+    public function testUpgradesLegacySectionTargetToNameField(): void
+    {
+        $mapping = SectionPath::upgradeLegacyMapping([
+            ['column' => 'B', 'target' => 'SECTION:1'],
+        ]);
+
+        self::assertSame('SECTION:1:NAME', $mapping[0]['target']);
     }
 
     public function testConvertsUnsupportedLegacyElementFieldToProperty(): void

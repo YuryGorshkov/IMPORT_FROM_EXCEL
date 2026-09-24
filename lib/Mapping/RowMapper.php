@@ -37,7 +37,11 @@ final class RowMapper
             if ($scope === 'PROPERTY') {
                 $properties[$name] = $value;
             } elseif ($scope === 'SECTION') {
-                $sections[(int) $name] = $value;
+                $sectionTarget = SectionPath::parseTarget($target);
+                if ($sectionTarget === null) {
+                    throw new MappingException(sprintf('Invalid section target %s.', $target));
+                }
+                $sections[$sectionTarget['level']][$sectionTarget['field']] = $value;
             } else {
                 $fields[$name] = $value;
             }

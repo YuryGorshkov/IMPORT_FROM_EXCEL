@@ -20,8 +20,23 @@ final class MappedRow
         [$scope, $name] = array_pad(explode(':', strtoupper($target), 2), 2, '');
         return match ($scope) {
             'PROPERTY' => $this->properties[$name] ?? null,
-            'SECTION' => $this->sections[(int) $name] ?? null,
+            'SECTION' => $this->sectionValue($target),
             default => $this->fields[$name] ?? null,
         };
+    }
+
+    private function sectionValue(string $target): mixed
+    {
+        $parsed = SectionPath::parseTarget($target);
+        if ($parsed === null) {
+            return null;
+        }
+
+        $level = $this->sections[$parsed['level']] ?? null;
+        if (is_array($level)) {
+            return $level[$parsed['field']] ?? null;
+        }
+
+        return $parsed['field'] === 'NAME' ? $level : null;
     }
 }

@@ -8,11 +8,13 @@ use Bitrix\Main\Loader;
 use WebEnot\ImportExcel\Discovery\HeaderNormalizer;
 use WebEnot\ImportExcel\Mapping\ElementFieldCatalog;
 use WebEnot\ImportExcel\Mapping\MappedRow;
+use WebEnot\ImportExcel\Mapping\SectionFieldCatalog;
 
 final class BitrixIblockGateway implements IblockGatewayInterface
 {
     private readonly BitrixImageResolver $imageResolver;
     private readonly ElementCodeGenerator $sectionCodeGenerator;
+    private array $updatedSectionHashes = [];
 
     public function __construct(
         ?BitrixImageResolver $imageResolver = null,
@@ -108,49 +110,79 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         } while (true);
     }
 
-    public function resolveSectionPath(int $iblockId, array $names, bool $create): SectionPathResult
+    public function resolveSectionPath(int $iblockId, array $levels, bool $create): SectionPathResult
     {
         $parentId = 0;
         $createdIds = [];
+        $beforeSnapshots = [];
         try {
-            foreach ($names as $name) {
-                $name = trim((string) $name);
-                if ($name === '') {
-                    throw new \InvalidArgumentException('Section name cannot be empty.');
+            foreach ($levels as $position => $levelFields) {
+                $level = $position + 1;
+                $fields = $this->sanitizeSectionFields((array) $levelFields);
+                if ($fields === []) {
+                    throw new \InvalidArgumentException(sprintf('Section level %d has no fields.', $level));
                 }
 
-                $filter = [
-                    'IBLOCK_ID' => $iblockId,
-                    'SECTION_ID' => $parentId > 0 ? $parentId : false,
-                    '=NAME' => $name,
-                    'CHECK_PERMISSIONS' => 'N',
-                ];
-                $result = \CIBlockSection::GetList(['ID' => 'ASC'], $filter, false, ['ID', 'NAME']);
-                $match = $result->Fetch();
-                if ($match && $result->Fetch()) {
-                    throw new \RuntimeException(sprintf(
-                        'More than one section named "%s" exists under parent section %d.',
-                        $name,
-                        $parentId
-                    ));
-                }
+                $match = $this->findSection($iblockId, $parentId, $fields, $level);
                 if ($match) {
                     $parentId = (int) $match['ID'];
+                    if ($create) {
+                        $updates = $fields;
+                        unset($updates['ID']);
+                        $hash = hash('sha256', serialize($updates));
+                        if (
+                            $updates !== []
+                            && $this->sectionFieldsNeedUpdate($match, $updates)
+                            && ($this->updatedSectionHashes[$parentId] ?? '') !== $hash
+                        ) {
+                            $beforeSnapshots[] = $this->snapshotSection($parentId);
+                            $this->updateSection($iblockId, $parentId, $updates);
+                            $this->updatedSectionHashes[$parentId] = $hash;
+                        }
+                    }
                     continue;
                 }
                 if (!$create) {
                     return new SectionPathResult(null);
                 }
+                if (isset($fields['ID'])) {
+                    throw new \RuntimeException(sprintf(
+                        'Section ID %d was not found at level %d under parent section %d.',
+                        (int) $fields['ID'],
+                        $level,
+                        $parentId
+                    ));
+                }
+
+                $name = trim((string) ($fields['NAME'] ?? ''));
+                if ($name === '') {
+                    throw new \RuntimeException(sprintf(
+                        'Section level %d was not found and cannot be created without the NAME field.',
+                        $level
+                    ));
+                }
+
+                unset($fields['ID']);
+                $fields['IBLOCK_ID'] = $iblockId;
+                $fields['IBLOCK_SECTION_ID'] = $parentId > 0 ? $parentId : false;
+                $fields['ACTIVE'] ??= 'Y';
+                $fields['SORT'] ??= 500;
+                if (trim((string) ($fields['CODE'] ?? '')) === '') {
+                    $fields['CODE'] = $this->uniqueSectionCode($iblockId, $name);
+                } else {
+                    $this->assertSectionIdentifierAvailable($iblockId, 'CODE', (string) $fields['CODE']);
+                }
+                if (trim((string) ($fields['XML_ID'] ?? '')) !== '') {
+                    $this->assertSectionIdentifierAvailable($iblockId, 'XML_ID', (string) $fields['XML_ID']);
+                }
 
                 $section = new \CIBlockSection();
-                $sectionId = (int) $section->Add([
-                    'IBLOCK_ID' => $iblockId,
-                    'IBLOCK_SECTION_ID' => $parentId > 0 ? $parentId : false,
-                    'NAME' => $name,
-                    'ACTIVE' => 'Y',
-                    'SORT' => 500,
-                    'CODE' => $this->uniqueSectionCode($iblockId, $name),
-                ]);
+                [$fields, $temporaryPaths] = $this->prepareSectionPictureFields($fields);
+                try {
+                    $sectionId = (int) $section->Add($fields, true, true, true);
+                } finally {
+                    $this->cleanupTemporaryFiles($temporaryPaths);
+                }
                 if ($sectionId < 1) {
                     throw new \RuntimeException('Unable to create IBlock section: ' . $section->LAST_ERROR);
                 }
@@ -159,13 +191,14 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             }
         } catch (\Throwable $exception) {
             try {
+                $this->restoreSections($beforeSnapshots);
                 $this->deleteSectionsIfEmpty($createdIds);
             } catch (\Throwable) {
             }
             throw $exception;
         }
 
-        return new SectionPathResult($parentId > 0 ? $parentId : null, $createdIds);
+        return new SectionPathResult($parentId > 0 ? $parentId : null, $createdIds, $beforeSnapshots);
     }
 
     public function snapshot(int $elementId): array
@@ -302,6 +335,219 @@ final class BitrixIblockGateway implements IblockGatewayInterface
                 throw new \RuntimeException(sprintf('Unable to delete empty IBlock section %d.', $sectionId));
             }
         }
+    }
+
+    public function restoreSections(array $snapshots): void
+    {
+        foreach (array_reverse($snapshots) as $snapshot) {
+            $fields = (array) ($snapshot['fields'] ?? []);
+            $sectionId = (int) ($fields['ID'] ?? 0);
+            $iblockId = (int) ($fields['IBLOCK_ID'] ?? 0);
+            if ($sectionId < 1 || $iblockId < 1) {
+                continue;
+            }
+            unset($fields['ID'], $fields['IBLOCK_ID']);
+            $this->updateSection($iblockId, $sectionId, $fields, true);
+            unset($this->updatedSectionHashes[$sectionId]);
+        }
+    }
+
+    private function findSection(int $iblockId, int $parentId, array $fields, int $level): ?array
+    {
+        $filter = [
+            'IBLOCK_ID' => $iblockId,
+            'SECTION_ID' => $parentId > 0 ? $parentId : false,
+            'CHECK_PERMISSIONS' => 'N',
+        ];
+        $identity = '';
+        if (isset($fields['ID'])) {
+            $identity = 'ID';
+            $filter['ID'] = (int) $fields['ID'];
+        } elseif (trim((string) ($fields['XML_ID'] ?? '')) !== '') {
+            $identity = 'XML_ID';
+            $filter['=XML_ID'] = (string) $fields['XML_ID'];
+        } elseif (trim((string) ($fields['CODE'] ?? '')) !== '') {
+            $identity = 'CODE';
+            $filter['=CODE'] = (string) $fields['CODE'];
+        } elseif (trim((string) ($fields['NAME'] ?? '')) !== '') {
+            $identity = 'NAME';
+            $filter['=NAME'] = (string) $fields['NAME'];
+        } else {
+            throw new \RuntimeException(sprintf(
+                'Section level %d needs ID, XML_ID, CODE or NAME for identification.',
+                $level
+            ));
+        }
+
+        $result = \CIBlockSection::GetList(['ID' => 'ASC'], $filter, false, $this->sectionSelectFields());
+        $match = $result->Fetch();
+        if ($match && $result->Fetch()) {
+            throw new \RuntimeException(sprintf(
+                'More than one section matched %s at level %d under parent section %d.',
+                $identity,
+                $level,
+                $parentId
+            ));
+        }
+
+        return $match ?: null;
+    }
+
+    private function snapshotSection(int $sectionId): array
+    {
+        $section = \CIBlockSection::GetList(
+            [],
+            ['ID' => $sectionId, 'CHECK_PERMISSIONS' => 'N'],
+            false,
+            $this->sectionSelectFields()
+        )->Fetch();
+        if (!$section) {
+            throw new \RuntimeException(sprintf('IBlock section %d was not found.', $sectionId));
+        }
+
+        return ['fields' => $section];
+    }
+
+    private function sectionFieldsNeedUpdate(array $current, array $updates): bool
+    {
+        foreach ($updates as $code => $value) {
+            if (SectionFieldCatalog::isPicture((string) $code) && !is_numeric($value)) {
+                return true;
+            }
+            if ((string) ($current[$code] ?? '') !== (string) $value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function updateSection(int $iblockId, int $sectionId, array $fields, bool $restore = false): void
+    {
+        $fields = $this->sanitizeSectionFields($fields);
+        unset($fields['ID']);
+        if ($fields === []) {
+            return;
+        }
+        if (isset($fields['CODE'])) {
+            $this->assertSectionIdentifierAvailable($iblockId, 'CODE', (string) $fields['CODE'], $sectionId);
+        }
+        if (isset($fields['XML_ID'])) {
+            $this->assertSectionIdentifierAvailable($iblockId, 'XML_ID', (string) $fields['XML_ID'], $sectionId);
+        }
+
+        [$fields, $temporaryPaths] = $this->prepareSectionPictureFields($fields, $restore);
+        $section = new \CIBlockSection();
+        try {
+            if (!$section->Update($sectionId, $fields, true, true, true)) {
+                throw new \RuntimeException('Unable to update IBlock section: ' . $section->LAST_ERROR);
+            }
+        } finally {
+            $this->cleanupTemporaryFiles($temporaryPaths);
+        }
+    }
+
+    private function sanitizeSectionFields(array $fields): array
+    {
+        $fields = array_change_key_case($fields, CASE_UPPER);
+        $fields = array_intersect_key($fields, array_flip(SectionFieldCatalog::codes()));
+        foreach ($fields as $code => $value) {
+            if ($value === null || $value === '') {
+                unset($fields[$code]);
+            }
+        }
+        if (isset($fields['ID'])) {
+            $fields['ID'] = (int) $fields['ID'];
+            if ($fields['ID'] < 1) {
+                unset($fields['ID']);
+            }
+        }
+        if (isset($fields['ACTIVE'])) {
+            $fields['ACTIVE'] = in_array(strtoupper((string) $fields['ACTIVE']), ['Y', '1', 'YES', 'ДА'], true)
+                ? 'Y'
+                : 'N';
+        }
+        if (isset($fields['SORT'])) {
+            $fields['SORT'] = (int) $fields['SORT'];
+        }
+        if (isset($fields['DESCRIPTION_TYPE'])) {
+            $fields['DESCRIPTION_TYPE'] = strtolower((string) $fields['DESCRIPTION_TYPE']) === 'html'
+                ? 'html'
+                : 'text';
+        }
+
+        return $fields;
+    }
+
+    private function sectionSelectFields(): array
+    {
+        return array_values(array_unique(array_merge(
+            ['ID', 'IBLOCK_ID', 'IBLOCK_SECTION_ID'],
+            SectionFieldCatalog::codes()
+        )));
+    }
+
+    private function assertSectionIdentifierAvailable(
+        int $iblockId,
+        string $field,
+        string $value,
+        int $excludeSectionId = 0
+    ): void {
+        $value = trim($value);
+        if ($value === '') {
+            return;
+        }
+        $filter = [
+            'IBLOCK_ID' => $iblockId,
+            '=' . strtoupper($field) => $value,
+            'CHECK_PERMISSIONS' => 'N',
+        ];
+        if ($excludeSectionId > 0) {
+            $filter['!ID'] = $excludeSectionId;
+        }
+        if (\CIBlockSection::GetList([], $filter, false, ['ID'])->Fetch()) {
+            throw new \RuntimeException(sprintf(
+                'Section %s "%s" is already used in IBlock %d.',
+                strtoupper($field),
+                $value,
+                $iblockId
+            ));
+        }
+    }
+
+    /**
+     * @return array{0: array, 1: list<string>}
+     */
+    private function prepareSectionPictureFields(array $fields, bool $restore = false): array
+    {
+        $temporaryPaths = [];
+        foreach ($fields as $code => $value) {
+            if (!SectionFieldCatalog::isPicture((string) $code)) {
+                continue;
+            }
+            if ($restore && is_numeric($value)) {
+                if ((int) $value < 1) {
+                    $fields[$code] = ['del' => 'Y'];
+                    continue;
+                }
+                $path = (string) \CFile::GetPath((int) $value);
+                $absolutePath = $path !== '' ? (string) $_SERVER['DOCUMENT_ROOT'] . $path : '';
+                if ($absolutePath !== '' && is_file($absolutePath)) {
+                    $fields[$code] = \CFile::MakeFileArray($absolutePath);
+                } else {
+                    unset($fields[$code]);
+                }
+                continue;
+            }
+
+            $resolved = $this->imageResolver->resolve($value);
+            $fields[$code] = $resolved['file'];
+            if ($resolved['temporary_path'] !== '') {
+                $temporaryPaths[] = $resolved['temporary_path'];
+            }
+        }
+
+        return [$fields, $temporaryPaths];
     }
 
     private function sanitizeFields(array $fields): array

@@ -61,7 +61,7 @@ final class ColumnDiscoveryService
                 'label' => $label,
                 'code' => $code,
                 'target' => $sectionLevel !== null
-                    ? SectionPath::target($sectionLevel)
+                    ? SectionPath::target($sectionLevel, 'NAME')
                     : ($systemField !== null ? 'FIELD:' . $systemField : 'PROPERTY:' . $code),
                 'required' => $systemField === 'NAME',
                 'transforms' => [['type' => 'trim']],

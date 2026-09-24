@@ -6,7 +6,7 @@ namespace WebEnot\ImportExcel\Mapping;
 
 final class MappingValidator
 {
-    private const TARGET_PATTERN = '/^(FIELD|PROPERTY):[A-Z][A-Z0-9_]*$|^SECTION:[1-9][0-9]*$/';
+    private const TARGET_PATTERN = '/^(FIELD|PROPERTY):[A-Z][A-Z0-9_]*$|^SECTION:[1-9][0-9]*(?::[A-Z][A-Z0-9_]*)?$/';
 
     public function validate(array $mapping): void
     {
@@ -31,7 +31,7 @@ final class MappingValidator
                 throw new MappingException(sprintf('Unsupported element field "%s" in rule %d.', $target, $index + 1));
             }
             if (str_starts_with($target, 'SECTION:') && !SectionPath::isTarget($target)) {
-                throw new MappingException(sprintf('Unsupported section level "%s" in rule %d.', $target, $index + 1));
+                throw new MappingException(sprintf('Unsupported section field "%s" in rule %d.', $target, $index + 1));
             }
             if (isset($targets[$target])) {
                 throw new MappingException(sprintf('Target "%s" is mapped more than once.', $target));

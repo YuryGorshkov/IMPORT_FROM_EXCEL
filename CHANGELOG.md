@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 - 2026-09-24
+
+- Reworked nested sections to match the Bitrix data model instead of treating a level as a single synthetic field.
+- Added a separate destination group for each section level with ID, name, code, XML_ID, activity, sorting, description and picture fields.
+- Added hierarchical lookup by ID, XML_ID, code or name under the exact parent section.
+- Added creation and updating of real `CIBlockSection` records and assignment of elements to the deepest level.
+- Added rollback snapshots for existing sections changed during import.
+- Kept existing profiles compatible by upgrading legacy `SECTION:N` mappings to `SECTION:N:NAME` automatically.
+
 ## 0.5.2 - 2026-09-24
 
 - Replaced free-form element field codes with a guided list of supported Bitrix fields.

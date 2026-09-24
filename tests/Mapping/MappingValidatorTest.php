@@ -34,8 +34,9 @@ final class MappingValidatorTest extends TestCase
     public function testAcceptsSectionLevels(): void
     {
         (new MappingValidator())->validate([
-            ['column' => 'A', 'target' => 'SECTION:1'],
-            ['column' => 'B', 'target' => 'SECTION:2'],
+            ['column' => 'A', 'target' => 'SECTION:1:NAME'],
+            ['column' => 'B', 'target' => 'SECTION:1:CODE'],
+            ['column' => 'C', 'target' => 'SECTION:2:NAME'],
         ]);
 
         self::addToAssertionCount(1);
@@ -44,10 +45,20 @@ final class MappingValidatorTest extends TestCase
     public function testRejectsSectionLevelAboveLimit(): void
     {
         $this->expectException(MappingException::class);
-        $this->expectExceptionMessage('Unsupported section level');
+        $this->expectExceptionMessage('Unsupported section field');
 
         (new MappingValidator())->validate([
-            ['column' => 'A', 'target' => 'SECTION:11'],
+            ['column' => 'A', 'target' => 'SECTION:11:NAME'],
+        ]);
+    }
+
+    public function testRejectsUnsupportedSectionField(): void
+    {
+        $this->expectException(MappingException::class);
+        $this->expectExceptionMessage('Unsupported section field');
+
+        (new MappingValidator())->validate([
+            ['column' => 'A', 'target' => 'SECTION:1:UNKNOWN'],
         ]);
     }
 
@@ -58,7 +69,7 @@ final class MappingValidatorTest extends TestCase
 
         (new MappingValidator())->validate([
             ['column' => 'A', 'target' => 'FIELD:IBLOCK_SECTION_ID'],
-            ['column' => 'B', 'target' => 'SECTION:1'],
+            ['column' => 'B', 'target' => 'SECTION:1:NAME'],
         ]);
     }
 
