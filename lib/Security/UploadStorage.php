@@ -28,19 +28,33 @@ final class UploadStorage
 
         $originalName = basename((string) ($uploadedFile['name'] ?? 'source.xlsx'));
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $targetDirectory = rtrim($this->directory, '/\\');
-        if (!is_dir($targetDirectory) && !mkdir($targetDirectory, 0770, true) && !is_dir($targetDirectory)) {
-            throw new \RuntimeException('Unable to create the protected import directory.');
-        }
-        $this->protectDirectory($targetDirectory);
-
-        $target = $targetDirectory . DIRECTORY_SEPARATOR . bin2hex(random_bytes(16)) . '.' . $extension;
+        $target = $this->newTarget($extension);
         if (!move_uploaded_file($tmpName, $target)) {
             throw new \RuntimeException('Unable to move the uploaded file into import storage.');
         }
 
         try {
             return $this->policy->validate($target);
+        } catch (\Throwable $exception) {
+            @unlink($target);
+            throw $exception;
+        }
+    }
+
+    public function transfer(string $token, self $destination): string
+    {
+        $source = $this->resolve($token);
+        $extension = strtolower(pathinfo($source, PATHINFO_EXTENSION));
+        $target = $destination->newTarget($extension);
+        if (!@rename($source, $target)) {
+            if (!copy($source, $target)) {
+                throw new \RuntimeException('Unable to transfer the temporary upload.');
+            }
+            @unlink($source);
+        }
+
+        try {
+            return $destination->policy->validate($target);
         } catch (\Throwable $exception) {
             @unlink($target);
             throw $exception;
@@ -130,5 +144,16 @@ final class UploadStorage
         if (!is_file($indexFile)) {
             file_put_contents($indexFile, "<?php\nhttp_response_code(404);\n");
         }
+    }
+
+    private function newTarget(string $extension): string
+    {
+        $targetDirectory = rtrim($this->directory, '/\\');
+        if (!is_dir($targetDirectory) && !mkdir($targetDirectory, 0770, true) && !is_dir($targetDirectory)) {
+            throw new \RuntimeException('Unable to create the protected import directory.');
+        }
+        $this->protectDirectory($targetDirectory);
+
+        return $targetDirectory . DIRECTORY_SEPARATOR . bin2hex(random_bytes(16)) . '.' . $extension;
     }
 }

@@ -43,4 +43,28 @@ final class UploadStorageTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $storage->resolve('../' . $this->token);
     }
+
+    public function testTransfersTemporaryUploadToAnotherProtectedStorage(): void
+    {
+        $destinationDirectory = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 'webenot_import_' . bin2hex(random_bytes(8));
+        $source = new UploadStorage($this->directory, new SourceFilePolicy());
+        $destination = new UploadStorage($destinationDirectory, new SourceFilePolicy());
+
+        try {
+            $path = $source->transfer($this->token, $destination);
+            $destinationToken = $destination->token($path);
+
+            self::assertFileDoesNotExist($this->directory . DIRECTORY_SEPARATOR . $this->token);
+            self::assertSame($path, $destination->resolve($destinationToken));
+            self::assertFileExists($destinationDirectory . DIRECTORY_SEPARATOR . '.htaccess');
+        } finally {
+            if (isset($path) && is_file($path)) {
+                @unlink($path);
+            }
+            @unlink($destinationDirectory . DIRECTORY_SEPARATOR . '.htaccess');
+            @unlink($destinationDirectory . DIRECTORY_SEPARATOR . 'index.php');
+            @rmdir($destinationDirectory);
+        }
+    }
 }

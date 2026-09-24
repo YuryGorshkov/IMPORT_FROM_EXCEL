@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 - 2026-09-24
+
+- Added inline IBlock creation while configuring an import profile.
+- Separated the structural sample from the current working file selected for each run.
+- Added working-file header validation against the saved profile before processing.
+- Removed the redundant worksheet field from the run page and added automatic sheet selection.
+- Replaced the dry-run checkbox with a guided check-then-confirm workflow that reuses the same verified file.
+- Added an optional direct transition from profile setup to checking the uploaded sample.
+
 ## 0.4.0 - 2026-09-24
 
 - Added a safe spreadsheet preview before column discovery.

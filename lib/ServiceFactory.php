@@ -19,7 +19,9 @@ use WebEnot\ImportExcel\Reporting\OrmReporter;
 use WebEnot\ImportExcel\Security\SourceFilePolicy;
 use WebEnot\ImportExcel\Security\UploadStorage;
 use WebEnot\ImportExcel\Target\BitrixIblockGateway;
+use WebEnot\ImportExcel\Target\IblockCreator;
 use WebEnot\ImportExcel\Target\IblockTarget;
+use WebEnot\ImportExcel\Validation\SourceStructureValidator;
 
 final class ServiceFactory
 {
@@ -52,6 +54,16 @@ final class ServiceFactory
     public static function discovery(): ColumnDiscoveryService
     {
         return new ColumnDiscoveryService(self::reader(), new HeaderNormalizer());
+    }
+
+    public static function iblockCreator(): IblockCreator
+    {
+        return new IblockCreator(new HeaderNormalizer());
+    }
+
+    public static function sourceStructureValidator(): SourceStructureValidator
+    {
+        return new SourceStructureValidator();
     }
 
     public static function profiles(): ProfileRepository

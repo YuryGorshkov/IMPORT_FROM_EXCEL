@@ -6,6 +6,7 @@ use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use WebEnot\ImportExcel\Admin\AdminUi;
 use WebEnot\ImportExcel\Discovery\HeaderRowDetector;
+use WebEnot\ImportExcel\Mapping\MappingValidator;
 use WebEnot\ImportExcel\Orm\ProfileTable;
 use WebEnot\ImportExcel\ServiceFactory;
 use WebEnot\ImportExcel\Support\Json;
@@ -91,6 +92,7 @@ $form = [
     'target_id' => (int) ($record['TARGET_ID'] ?? 0),
     'active' => ($record['ACTIVE'] ?? 'Y') === 'Y',
     'mapping' => $record ? Json::decode((string) $record['MAPPING']) : [],
+    'source_config' => $record ? Json::decode((string) $record['SOURCE_CONFIG']) : [],
     'options' => $record ? Json::decode((string) $record['OPTIONS']) : [
         'header_row' => 1,
         'start_row' => 2,
@@ -104,7 +106,7 @@ $form = [
     ],
 ];
 $errors = [];
-$sheet = trim((string) ($_POST['sheet'] ?? ''));
+$sheet = trim((string) ($_POST['sheet'] ?? ($form['source_config']['sheet'] ?? '')));
 $previewToken = trim((string) ($_POST['preview_token'] ?? ''));
 $previewStartRow = max(1, (int) ($_POST['preview_start_row'] ?? 1));
 $previewRows = [];
@@ -112,6 +114,10 @@ $previewSheets = [];
 $previewColumns = [];
 $previewColumnsTruncated = false;
 $previewLimit = 15;
+$targetMode = (string) ($_POST['target_mode'] ?? 'existing');
+$newIblockName = trim((string) ($_POST['new_iblock_name'] ?? ''));
+$newIblockType = trim((string) ($_POST['new_iblock_type'] ?? 'catalog'));
+$newIblockCode = trim((string) ($_POST['new_iblock_code'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     $form['name'] = trim((string) ($_POST['name'] ?? ''));
@@ -133,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
         'delimiter' => (string) ($_POST['delimiter'] ?? ';'),
         'encoding' => trim((string) ($_POST['encoding'] ?? 'UTF-8')) ?: 'UTF-8',
     ];
+    $form['source_config']['sheet'] = $sheet;
     if (array_key_exists('mapping_rows', $_POST)) {
         $form['mapping'] = webenotImportExcelMappingFromRequest((array) $_POST['mapping_rows']);
     }
@@ -212,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                     $form['options']['unique_target'] = (string) (($candidates[0] ?? $form['mapping'][0])['target']);
                 }
             }
-        } elseif (isset($_POST['save'])) {
+        } elseif (isset($_POST['save']) || isset($_POST['save_and_run'])) {
             $mappingTargets = array_column($form['mapping'], 'target');
             if (!in_array($form['options']['unique_target'], $mappingTargets, true) && $mappingTargets !== []) {
                 $form['options']['unique_target'] = (string) $mappingTargets[0];
@@ -220,12 +227,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
             if ($form['name'] === '') {
                 throw new InvalidArgumentException((string) Loc::getMessage('WIE_PROFILE_NAME_REQUIRED'));
             }
-            if ($form['target_id'] < 1) {
-                throw new InvalidArgumentException((string) Loc::getMessage('WIE_PROFILE_TARGET_REQUIRED'));
-            }
             if ($form['mapping'] === []) {
                 throw new InvalidArgumentException((string) Loc::getMessage('WIE_PROFILE_MAPPING_REQUIRED_ERROR'));
             }
+            (new MappingValidator())->validate($form['mapping']);
+            if ($targetMode === 'new') {
+                if ($newIblockName === '' || $newIblockType === '') {
+                    throw new InvalidArgumentException(
+                        (string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_REQUIRED')
+                    );
+                }
+                $form['target_id'] = ServiceFactory::iblockCreator()->create(
+                    $newIblockName,
+                    $newIblockType,
+                    $newIblockCode
+                );
+                $targetMode = 'existing';
+            } elseif ($form['target_id'] < 1) {
+                throw new InvalidArgumentException((string) Loc::getMessage('WIE_PROFILE_TARGET_REQUIRED'));
+            }
+            $form['source_config']['sheet'] = $sheet;
             $id = ServiceFactory::profiles()->save([
                 'id' => $id,
                 'name' => $form['name'],
@@ -233,7 +254,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                 'active' => $form['active'],
                 'mapping' => $form['mapping'],
                 'options' => $form['options'],
+                'source_config' => $form['source_config'],
             ]);
+            if (isset($_POST['save_and_run'])) {
+                $query = [
+                    'profile_id' => $id,
+                    'lang' => LANGUAGE_ID,
+                ];
+                if ($previewToken !== '') {
+                    $sourcePath = ServiceFactory::previewUploads()->transfer(
+                        $previewToken,
+                        ServiceFactory::uploads()
+                    );
+                    $query['source_token'] = ServiceFactory::uploads()->token($sourcePath);
+                    $previewToken = '';
+                }
+                header('Location: webenot_importexcel_run.php?' . http_build_query($query), true, 302);
+                exit;
+            }
             if ($previewToken !== '') {
                 ServiceFactory::previewUploads()->remove($previewToken);
             }
@@ -262,6 +300,16 @@ $iblocks = [];
 $iblockResult = CIBlock::GetList(['IBLOCK_TYPE_ID' => 'ASC', 'NAME' => 'ASC'], []);
 while ($iblock = $iblockResult->Fetch()) {
     $iblocks[] = $iblock;
+}
+$iblockTypes = [];
+$iblockTypeResult = CIBlockType::GetList(['SORT' => 'ASC', 'ID' => 'ASC']);
+while ($iblockType = $iblockTypeResult->Fetch()) {
+    $typeId = (string) $iblockType['ID'];
+    $typeLanguage = CIBlockType::GetByIDLang($typeId, LANGUAGE_ID, true);
+    $iblockTypes[$typeId] = (string) ($typeLanguage['NAME'] ?? $typeId);
+}
+if (!isset($iblockTypes[$newIblockType])) {
+    $newIblockType = (string) (array_key_first($iblockTypes) ?? '');
 }
 
 $uniqueTargets = [];
@@ -312,18 +360,46 @@ foreach ($errors as $error) {
                 </div>
                 <div class="wie-field">
                     <label class="wie-label" for="wie-target"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_TARGET_HINT')); ?></label>
-                    <select id="wie-target" name="target_id" required>
-                        <option value=""><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_CHOOSE')) ?></option>
-                        <?php foreach ($iblocks as $iblock) :
-                            $iblockId = (int) $iblock['ID'];
-                            $iblockLabel = (string) $iblock['NAME'] . ' · ' . (string) $iblock['IBLOCK_TYPE_ID'] . ' · #' . $iblockId;
-                            if (($iblock['ACTIVE'] ?? 'Y') !== 'Y') {
-                                $iblockLabel .= ' · ' . (string) Loc::getMessage('WIE_PROFILE_TARGET_INACTIVE');
-                            }
-                            ?>
-                            <option value="<?= $iblockId ?>"<?= $form['target_id'] === $iblockId ? ' selected' : '' ?>><?= htmlspecialcharsbx($iblockLabel) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input id="wie-target-mode" type="hidden" name="target_mode" value="<?= htmlspecialcharsbx($targetMode) ?>">
+                    <div class="wie-target-picker">
+                        <select id="wie-target" name="target_id">
+                            <option value=""><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_CHOOSE')) ?></option>
+                            <?php foreach ($iblocks as $iblock) :
+                                $iblockId = (int) $iblock['ID'];
+                                $iblockLabel = (string) $iblock['NAME'] . ' · ' . (string) $iblock['IBLOCK_TYPE_ID'] . ' · #' . $iblockId;
+                                if (($iblock['ACTIVE'] ?? 'Y') !== 'Y') {
+                                    $iblockLabel .= ' · ' . (string) Loc::getMessage('WIE_PROFILE_TARGET_INACTIVE');
+                                }
+                                ?>
+                                <option value="<?= $iblockId ?>"<?= $form['target_id'] === $iblockId ? ' selected' : '' ?>><?= htmlspecialcharsbx($iblockLabel) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button id="wie-create-target" class="wie-secondary wie-button-nowrap" type="button"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_CREATE')) ?></button>
+                    </div>
+                </div>
+                <div id="wie-new-target" class="wie-field wie-field-wide wie-new-target"<?= $targetMode === 'new' ? '' : ' hidden' ?>>
+                    <div class="wie-new-target-head">
+                        <div><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_TITLE')) ?></strong><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_TEXT')) ?></span></div>
+                        <button id="wie-cancel-target" class="wie-link-button" type="button"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_CANCEL')) ?></button>
+                    </div>
+                    <div class="wie-grid">
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-new-target-name"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_NAME')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_NAME_HINT')); ?></label>
+                            <input id="wie-new-target-name" name="new_iblock_name" value="<?= htmlspecialcharsbx($newIblockName) ?>" placeholder="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_NAME_PLACEHOLDER')) ?>">
+                        </div>
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-new-target-type"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_TYPE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_TYPE_HINT')); ?></label>
+                            <select id="wie-new-target-type" name="new_iblock_type">
+                                <?php foreach ($iblockTypes as $typeId => $typeName) : ?>
+                                    <option value="<?= htmlspecialcharsbx($typeId) ?>"<?= $newIblockType === $typeId ? ' selected' : '' ?>><?= htmlspecialcharsbx($typeName . ' · ' . $typeId) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="wie-field wie-field-wide">
+                            <label class="wie-label" for="wie-new-target-code"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_CODE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_CODE_HINT')); ?></label>
+                            <input id="wie-new-target-code" name="new_iblock_code" value="<?= htmlspecialcharsbx($newIblockCode) ?>" placeholder="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_TARGET_CODE_PLACEHOLDER')) ?>">
+                        </div>
+                    </div>
                 </div>
                 <div class="wie-field wie-field-wide">
                     <label class="wie-check"><input name="active" type="checkbox" value="Y"<?= $form['active'] ? ' checked' : '' ?>><span class="wie-check-text"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_ACTIVE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_ACTIVE_HINT')); ?></span></label>
@@ -522,7 +598,8 @@ foreach ($errors as $error) {
         </section>
 
         <div class="wie-actions">
-            <button class="wie-primary" type="submit" name="save" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SAVE')) ?></button>
+            <button class="wie-primary" type="submit" name="save_and_run" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage($previewToken !== '' ? 'WIE_PROFILE_SAVE_AND_CHECK' : 'WIE_PROFILE_SAVE_AND_RUN')) ?></button>
+            <button class="wie-secondary" type="submit" name="save" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SAVE_ONLY')) ?></button>
             <a class="wie-secondary" href="webenot_importexcel_profiles.php?lang=<?= urlencode(LANGUAGE_ID) ?>"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_BACK')) ?></a>
         </div>
     </form>
@@ -532,6 +609,22 @@ foreach ($errors as $error) {
     var rows = document.querySelectorAll('[data-preview-row]');
     var badge = document.getElementById('wie-selected-row');
     var startRow = document.getElementById('wie-start-row');
+    var targetMode = document.getElementById('wie-target-mode');
+    var newTarget = document.getElementById('wie-new-target');
+    var createTarget = document.getElementById('wie-create-target');
+    var cancelTarget = document.getElementById('wie-cancel-target');
+    if (targetMode && newTarget && createTarget && cancelTarget) {
+        createTarget.addEventListener('click', function () {
+            targetMode.value = 'new';
+            newTarget.hidden = false;
+            document.getElementById('wie-new-target-name').focus();
+        });
+        cancelTarget.addEventListener('click', function () {
+            targetMode.value = 'existing';
+            newTarget.hidden = true;
+            document.getElementById('wie-target').focus();
+        });
+    }
     Array.prototype.forEach.call(rows, function (row) {
         var radio = row.querySelector('input[type="radio"][name="header_row"]');
         if (!radio) {
