@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 - 2026-09-24
+
+- Added a safe spreadsheet preview before column discovery.
+- Added visual header-row selection with row numbers and highlighting.
+- Added automatic header-row suggestion for files with title and service rows.
+- Added worksheet selection based on the actual workbook sheet list.
+- Added configurable preview start row for files with long preambles.
+- Kept preview uploads in isolated protected temporary storage with opaque tokens and expiration.
+
 ## 0.3.0 - 2026-09-23
 
 - Redesigned all Bitrix administration pages with a clear card-based layout.

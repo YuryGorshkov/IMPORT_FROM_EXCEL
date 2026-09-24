@@ -41,6 +41,14 @@ final class ServiceFactory
         );
     }
 
+    public static function previewUploads(): UploadStorage
+    {
+        return new UploadStorage(
+            Application::getDocumentRoot() . '/upload/webenot.importexcel/preview',
+            self::filePolicy()
+        );
+    }
+
     public static function discovery(): ColumnDiscoveryService
     {
         return new ColumnDiscoveryService(self::reader(), new HeaderNormalizer());

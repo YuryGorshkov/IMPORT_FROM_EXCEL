@@ -87,9 +87,12 @@ final class SpreadsheetReader implements ReaderInterface
 
     public function preview(string $path, ?string $sheet = null, int $limit = 20, array $options = []): array
     {
-        $startRow = max(1, (int) ($options['header_row'] ?? 1));
+        $startRow = max(1, (int) ($options['preview_start_row'] ?? 1));
+        $previewOptions = $options;
+        $previewOptions['header_row'] = $startRow;
+        $previewOptions['include_empty_rows'] = true;
         $rows = [];
-        foreach ($this->read($path, $sheet, $startRow, min(100, max(1, $limit)), $options) as $row) {
+        foreach ($this->read($path, $sheet, $startRow, min(100, max(1, $limit)), $previewOptions) as $row) {
             $rows[] = ['row' => $row->number, 'cells' => $row->cells];
         }
         return $rows;

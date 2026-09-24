@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use WebEnot\ImportExcel\Admin\AdminUi;
+use WebEnot\ImportExcel\Discovery\HeaderRowDetector;
 use WebEnot\ImportExcel\Orm\ProfileTable;
 use WebEnot\ImportExcel\ServiceFactory;
 use WebEnot\ImportExcel\Support\Json;
@@ -61,6 +62,21 @@ function webenotImportExcelMappingFromRequest(array $rows): array
     return $mapping;
 }
 
+function webenotImportExcelPreviewValue(mixed $value): string
+{
+    if ($value === null) {
+        return '';
+    }
+    if (is_bool($value)) {
+        return $value ? '1' : '0';
+    }
+    if (!is_scalar($value)) {
+        $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    return trim((string) preg_replace('/\s+/u', ' ', (string) $value));
+}
+
 $id = (int) ($_REQUEST['ID'] ?? 0);
 $record = $id > 0 ? ProfileTable::getByPrimary($id)->fetch() : null;
 if ($id > 0 && !$record) {
@@ -89,6 +105,13 @@ $form = [
 ];
 $errors = [];
 $sheet = trim((string) ($_POST['sheet'] ?? ''));
+$previewToken = trim((string) ($_POST['preview_token'] ?? ''));
+$previewStartRow = max(1, (int) ($_POST['preview_start_row'] ?? 1));
+$previewRows = [];
+$previewSheets = [];
+$previewColumns = [];
+$previewColumnsTruncated = false;
+$previewLimit = 15;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     $form['name'] = trim((string) ($_POST['name'] ?? ''));
@@ -110,11 +133,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
         'delimiter' => (string) ($_POST['delimiter'] ?? ';'),
         'encoding' => trim((string) ($_POST['encoding'] ?? 'UTF-8')) ?: 'UTF-8',
     ];
+    if (array_key_exists('mapping_rows', $_POST)) {
+        $form['mapping'] = webenotImportExcelMappingFromRequest((array) $_POST['mapping_rows']);
+    }
 
     try {
-        if (isset($_POST['discover'])) {
-            $samplePath = ServiceFactory::uploads()->store($_FILES['sample'] ?? []);
-            try {
+        if (isset($_POST['preview']) || isset($_POST['discover'])) {
+            $previewStorage = ServiceFactory::previewUploads();
+            $previewStorage->cleanupExpired();
+            $uploadError = (int) ($_FILES['sample']['error'] ?? UPLOAD_ERR_NO_FILE);
+            $uploadedNewPreview = false;
+            if ($uploadError === UPLOAD_ERR_OK) {
+                if ($previewToken !== '') {
+                    $previewStorage->remove($previewToken);
+                }
+                $samplePath = $previewStorage->store($_FILES['sample']);
+                $previewToken = $previewStorage->token($samplePath);
+                $uploadedNewPreview = true;
+            } elseif ($uploadError === UPLOAD_ERR_NO_FILE && $previewToken !== '') {
+                $samplePath = $previewStorage->resolve($previewToken);
+            } elseif ($uploadError !== UPLOAD_ERR_NO_FILE) {
+                $samplePath = $previewStorage->store($_FILES['sample']);
+            } else {
+                throw new InvalidArgumentException((string) Loc::getMessage('WIE_PROFILE_PREVIEW_FILE_REQUIRED'));
+            }
+
+            $previewSheets = ServiceFactory::reader()->sheets($samplePath);
+            if ($sheet === '' || !in_array($sheet, $previewSheets, true)) {
+                $sheet = (string) ($previewSheets[0] ?? '');
+            }
+            $previewOptions = $form['options'];
+            $previewOptions['preview_start_row'] = $previewStartRow;
+            $previewRows = ServiceFactory::reader()->preview(
+                $samplePath,
+                $sheet !== '' ? $sheet : null,
+                $previewLimit,
+                $previewOptions
+            );
+            if ($previewRows === []) {
+                throw new RuntimeException((string) Loc::getMessage('WIE_PROFILE_PREVIEW_EMPTY'));
+            }
+
+            $previewRowNumbers = array_map(
+                static fn(array $row): int => (int) $row['row'],
+                $previewRows
+            );
+            if (
+                $uploadedNewPreview
+                || !array_key_exists('header_row', $_POST)
+                || !in_array($headerRow, $previewRowNumbers, true)
+            ) {
+                $headerRow = (new HeaderRowDetector())->detect($previewRows, $previewStartRow);
+            }
+            $form['options']['header_row'] = $headerRow;
+            $form['options']['start_row'] = $headerRow + 1;
+
+            if (isset($_POST['discover'])) {
+                if (!in_array($headerRow, $previewRowNumbers, true)) {
+                    throw new InvalidArgumentException(
+                        (string) Loc::getMessage('WIE_PROFILE_PREVIEW_HEADER_REQUIRED')
+                    );
+                }
                 $form['mapping'] = ServiceFactory::discovery()->discover(
                     $samplePath,
                     $sheet !== '' ? $sheet : null,
@@ -132,11 +211,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                     ));
                     $form['options']['unique_target'] = (string) (($candidates[0] ?? $form['mapping'][0])['target']);
                 }
-            } finally {
-                @unlink($samplePath);
             }
         } elseif (isset($_POST['save'])) {
-            $form['mapping'] = webenotImportExcelMappingFromRequest((array) ($_POST['mapping_rows'] ?? []));
             $mappingTargets = array_column($form['mapping'], 'target');
             if (!in_array($form['options']['unique_target'], $mappingTargets, true) && $mappingTargets !== []) {
                 $form['options']['unique_target'] = (string) $mappingTargets[0];
@@ -158,6 +234,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                 'mapping' => $form['mapping'],
                 'options' => $form['options'],
             ]);
+            if ($previewToken !== '') {
+                ServiceFactory::previewUploads()->remove($previewToken);
+            }
             header(
                 'Location: webenot_importexcel_profile_edit.php?ID=' . $id . '&lang=' . LANGUAGE_ID . '&saved=Y',
                 true,
@@ -169,6 +248,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
         $errors[] = $exception->getMessage();
     }
 }
+
+foreach ($previewRows as $previewRow) {
+    foreach (array_keys((array) ($previewRow['cells'] ?? [])) as $column) {
+        $previewColumns[(string) $column] = true;
+    }
+}
+$previewColumnNames = array_keys($previewColumns);
+$previewColumnsTruncated = count($previewColumnNames) > 30;
+$previewColumns = array_slice($previewColumnNames, 0, 30);
 
 $iblocks = [];
 $iblockResult = CIBlock::GetList(['IBLOCK_TYPE_ID' => 'ASC', 'NAME' => 'ASC'], []);
@@ -247,24 +335,85 @@ foreach ($errors as $error) {
             <h2><span class="wie-section-number">1.</span> <?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SECTION_DISCOVERY')) ?></h2>
             <p class="wie-section-hint"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SECTION_DISCOVERY_TEXT')) ?></p>
             <div class="wie-discovery">
+                <input type="hidden" name="preview_token" value="<?= htmlspecialcharsbx($previewToken) ?>">
                 <div class="wie-grid">
                     <div class="wie-field wie-field-wide">
                         <label class="wie-label" for="wie-sample"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SAMPLE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_SAMPLE_HINT')); ?></label>
                         <input id="wie-sample" name="sample" type="file" accept=".xlsx,.xls,.ods,.csv">
-                    </div>
-                    <div class="wie-field">
-                        <label class="wie-label" for="wie-sheet"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SHEET')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_SHEET_HINT')); ?></label>
-                        <input id="wie-sheet" name="sheet" value="<?= htmlspecialcharsbx($sheet) ?>" placeholder="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SHEET_PLACEHOLDER')) ?>">
-                    </div>
-                    <div class="wie-field">
-                        <label class="wie-label" for="wie-header-row"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_HEADER_ROW')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_HEADER_ROW_HINT')); ?></label>
-                        <input id="wie-header-row" name="header_row" type="number" min="1" value="<?= (int) $form['options']['header_row'] ?>">
+                        <?php if ($previewToken !== '') : ?>
+                            <p class="wie-field-note wie-file-ready"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_FILE_READY')) ?></p>
+                        <?php endif; ?>
                     </div>
                 </div>
-                <div class="wie-actions">
-                    <button class="wie-primary" type="submit" name="discover" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_DISCOVER')) ?></button>
-                    <span class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_DISCOVER_NOTE')) ?></span>
-                </div>
+                <?php if ($previewRows === []) : ?>
+                    <div class="wie-actions">
+                        <button class="wie-primary" type="submit" name="preview" value="Y" formnovalidate><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW')) ?></button>
+                        <span class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_NOTE')) ?></span>
+                    </div>
+                <?php else : ?>
+                    <div class="wie-preview-toolbar">
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-sheet"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SHEET')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_SHEET_HINT')); ?></label>
+                            <select id="wie-sheet" name="sheet">
+                                <?php foreach ($previewSheets as $sheetName) : ?>
+                                    <option value="<?= htmlspecialcharsbx($sheetName) ?>"<?= $sheet === $sheetName ? ' selected' : '' ?>><?= htmlspecialcharsbx($sheetName) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-preview-start"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_START')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_PREVIEW_START_HINT')); ?></label>
+                            <input id="wie-preview-start" name="preview_start_row" type="number" min="1" value="<?= $previewStartRow ?>">
+                        </div>
+                        <div class="wie-preview-refresh">
+                            <button class="wie-secondary" type="submit" name="preview" value="Y" formnovalidate><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_REFRESH')) ?></button>
+                        </div>
+                    </div>
+
+                    <div class="wie-preview-head">
+                        <div>
+                            <strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_TITLE')) ?></strong>
+                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_TEXT')) ?></span>
+                        </div>
+                        <span id="wie-selected-row" class="wie-badge wie-badge-info" data-template="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_SELECTED')) ?>"><?= htmlspecialcharsbx(str_replace('#ROW#', (string) $form['options']['header_row'], (string) Loc::getMessage('WIE_PROFILE_PREVIEW_SELECTED'))) ?></span>
+                    </div>
+                    <div class="wie-preview-wrap">
+                        <table class="wie-preview-table">
+                            <thead><tr>
+                                <th class="wie-preview-row-number"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_ROW')) ?></th>
+                                <?php foreach ($previewColumns as $column) : ?>
+                                    <th><?= htmlspecialcharsbx($column) ?></th>
+                                <?php endforeach; ?>
+                            </tr></thead>
+                            <tbody>
+                            <?php foreach ($previewRows as $previewRow) :
+                                $rowNumber = (int) $previewRow['row'];
+                                $selected = $rowNumber === (int) $form['options']['header_row'];
+                                ?>
+                                <tr class="wie-preview-row<?= $selected ? ' wie-preview-row-selected' : '' ?>" data-preview-row="<?= $rowNumber ?>">
+                                    <td class="wie-preview-row-number">
+                                        <label>
+                                            <input type="radio" name="header_row" value="<?= $rowNumber ?>"<?= $selected ? ' checked' : '' ?>>
+                                            <strong><?= $rowNumber ?></strong>
+                                        </label>
+                                    </td>
+                                    <?php foreach ($previewColumns as $column) :
+                                        $cellValue = webenotImportExcelPreviewValue($previewRow['cells'][$column] ?? null);
+                                        ?>
+                                        <td title="<?= htmlspecialcharsbx($cellValue) ?>"><?= $cellValue !== '' ? htmlspecialcharsbx($cellValue) : '<span class="wie-preview-empty">—</span>' ?></td>
+                                    <?php endforeach; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php if ($previewColumnsTruncated) : ?>
+                        <p class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_COLUMNS_TRUNCATED')) ?></p>
+                    <?php endif; ?>
+                    <div class="wie-actions">
+                        <button class="wie-primary" type="submit" name="discover" value="Y" formnovalidate><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_DISCOVER_SELECTED')) ?></button>
+                        <span class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_DISCOVER_NOTE')) ?></span>
+                    </div>
+                <?php endif; ?>
             </div>
         </section>
 
@@ -378,4 +527,35 @@ foreach ($errors as $error) {
         </div>
     </form>
 </div>
+<script>
+(function () {
+    var rows = document.querySelectorAll('[data-preview-row]');
+    var badge = document.getElementById('wie-selected-row');
+    var startRow = document.getElementById('wie-start-row');
+    Array.prototype.forEach.call(rows, function (row) {
+        var radio = row.querySelector('input[type="radio"][name="header_row"]');
+        if (!radio) {
+            return;
+        }
+        row.addEventListener('click', function (event) {
+            if (event.target !== radio) {
+                radio.checked = true;
+                radio.dispatchEvent(new Event('change'));
+            }
+        });
+        radio.addEventListener('change', function () {
+            Array.prototype.forEach.call(rows, function (item) {
+                item.classList.remove('wie-preview-row-selected');
+            });
+            row.classList.add('wie-preview-row-selected');
+            if (badge) {
+                badge.textContent = badge.getAttribute('data-template').replace('#ROW#', radio.value);
+            }
+            if (startRow) {
+                startRow.value = String(parseInt(radio.value, 10) + 1);
+            }
+        });
+    });
+}());
+</script>
 <?php require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/epilog_admin.php'; ?>
