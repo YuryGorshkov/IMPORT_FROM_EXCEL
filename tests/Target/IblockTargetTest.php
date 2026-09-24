@@ -58,6 +58,31 @@ final class IblockTargetTest extends TestCase
         self::assertSame('', $gateway->lastBaseCode);
     }
 
+    public function testResolvesNestedSectionPathWithoutCreatingItDuringDryRun(): void
+    {
+        $gateway = new CodeCaptureGateway();
+        $target = $this->target($gateway);
+        $row = new MappedRow(
+            2,
+            ['NAME' => 'Рукав'],
+            ['ARTIKUL' => 'ART-1'],
+            [],
+            [1 => 'Гидравлические рукава', 2 => 'Длинные гидравлические рукава']
+        );
+
+        $result = $target->apply($this->profile('name'), $row, true);
+
+        self::assertSame([
+            'iblock_id' => 5,
+            'names' => ['Гидравлические рукава', 'Длинные гидравлические рукава'],
+            'create' => false,
+        ], $gateway->sectionPaths[0]);
+        self::assertSame(
+            ['Гидравлические рукава', 'Длинные гидравлические рукава'],
+            $result->after['sections']
+        );
+    }
+
     private function target(CodeCaptureGateway $gateway): IblockTarget
     {
         return new IblockTarget($gateway, new ElementCodeGenerator(new HeaderNormalizer()));

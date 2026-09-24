@@ -7,6 +7,7 @@ use Bitrix\Main\Localization\Loc;
 use WebEnot\ImportExcel\Admin\AdminUi;
 use WebEnot\ImportExcel\Discovery\HeaderRowDetector;
 use WebEnot\ImportExcel\Mapping\MappingValidator;
+use WebEnot\ImportExcel\Mapping\SectionPath;
 use WebEnot\ImportExcel\Orm\ProfileTable;
 use WebEnot\ImportExcel\ServiceFactory;
 use WebEnot\ImportExcel\Support\Json;
@@ -37,10 +38,19 @@ function webenotImportExcelMappingFromRequest(array $rows): array
         }
 
         $column = strtoupper(trim((string) ($row['column'] ?? '')));
-        $targetType = strtoupper(trim((string) ($row['target_type'] ?? 'PROPERTY')));
-        $targetCode = strtoupper(trim((string) ($row['target_code'] ?? '')));
-        if (!in_array($targetType, ['FIELD', 'PROPERTY'], true)) {
+        $destination = strtoupper(trim((string) ($row['destination'] ?? '')));
+        if ($destination === '') {
+            $legacyType = strtoupper(trim((string) ($row['target_type'] ?? 'PROPERTY')));
+            $legacyCode = strtoupper(trim((string) (
+                $row['field_code'] ?? $row['property_code'] ?? $row['target_code'] ?? ''
+            )));
+            $destination = $legacyType . ':' . $legacyCode;
+        }
+        if ($destination === 'PROPERTY') {
             $targetType = 'PROPERTY';
+            $targetCode = strtoupper(trim((string) ($row['property_code'] ?? '')));
+        } else {
+            [$targetType, $targetCode] = array_pad(explode(':', $destination, 2), 2, '');
         }
 
         $transforms = json_decode((string) ($row['transforms_json'] ?? '[]'), true);
@@ -106,6 +116,7 @@ $form = [
         'encoding' => 'UTF-8',
     ],
 ];
+$form['mapping'] = SectionPath::upgradeLegacyMapping($form['mapping']);
 $errors = [];
 $sheet = trim((string) ($_POST['sheet'] ?? ($form['source_config']['sheet'] ?? '')));
 $previewToken = trim((string) ($_POST['preview_token'] ?? ''));
@@ -120,6 +131,33 @@ $newIblockName = trim((string) ($_POST['new_iblock_name'] ?? ''));
 $newIblockType = trim((string) ($_POST['new_iblock_type'] ?? 'catalog'));
 $newIblockCode = trim((string) ($_POST['new_iblock_code'] ?? ''));
 $createdIblock = false;
+$elementFieldMessages = [
+    'NAME' => 'WIE_PROFILE_FIELD_NAME',
+    'CODE' => 'WIE_PROFILE_FIELD_CODE',
+    'XML_ID' => 'WIE_PROFILE_FIELD_XML_ID',
+    'ACTIVE' => 'WIE_PROFILE_FIELD_ACTIVE',
+    'SORT' => 'WIE_PROFILE_FIELD_SORT',
+    'TAGS' => 'WIE_PROFILE_FIELD_TAGS',
+    'DATE_ACTIVE_FROM' => 'WIE_PROFILE_FIELD_DATE_ACTIVE_FROM',
+    'DATE_ACTIVE_TO' => 'WIE_PROFILE_FIELD_DATE_ACTIVE_TO',
+    'IBLOCK_SECTION_ID' => 'WIE_PROFILE_FIELD_SECTION',
+    'PREVIEW_TEXT' => 'WIE_PROFILE_FIELD_PREVIEW_TEXT',
+    'PREVIEW_TEXT_TYPE' => 'WIE_PROFILE_FIELD_PREVIEW_TEXT_TYPE',
+    'PREVIEW_PICTURE' => 'WIE_PROFILE_FIELD_PREVIEW_PICTURE',
+    'DETAIL_TEXT' => 'WIE_PROFILE_FIELD_DETAIL_TEXT',
+    'DETAIL_TEXT_TYPE' => 'WIE_PROFILE_FIELD_DETAIL_TEXT_TYPE',
+    'DETAIL_PICTURE' => 'WIE_PROFILE_FIELD_DETAIL_PICTURE',
+];
+$elementFieldGroups = [
+    'WIE_PROFILE_GROUP_ELEMENT' => [
+        'NAME', 'CODE', 'XML_ID', 'ACTIVE', 'SORT', 'TAGS',
+        'DATE_ACTIVE_FROM', 'DATE_ACTIVE_TO', 'IBLOCK_SECTION_ID',
+    ],
+    'WIE_PROFILE_GROUP_TEXTS' => [
+        'PREVIEW_TEXT', 'PREVIEW_TEXT_TYPE', 'DETAIL_TEXT', 'DETAIL_TEXT_TYPE',
+    ],
+    'WIE_PROFILE_GROUP_IMAGES' => ['PREVIEW_PICTURE', 'DETAIL_PICTURE'],
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     $form['name'] = trim((string) ($_POST['name'] ?? ''));
@@ -227,7 +265,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                 }
             }
         } elseif (isset($_POST['save']) || isset($_POST['save_and_run'])) {
-            $mappingTargets = array_column($form['mapping'], 'target');
+            $mappingTargets = array_values(array_filter(
+                array_column($form['mapping'], 'target'),
+                static fn(string $target): bool => !SectionPath::isTarget($target)
+            ));
             if (!in_array($form['options']['unique_target'], $mappingTargets, true) && $mappingTargets !== []) {
                 $form['options']['unique_target'] = (string) $mappingTargets[0];
             }
@@ -327,13 +368,13 @@ if (!isset($iblockTypes[$newIblockType])) {
 $uniqueTargets = [];
 foreach ($form['mapping'] as $rule) {
     $target = (string) ($rule['target'] ?? '');
-    if ($target !== '') {
+    if ($target !== '' && !SectionPath::isTarget($target)) {
         $uniqueTargets[$target] = (string) ($rule['label'] ?? $target);
     }
 }
 $currentUniqueTarget = (string) ($form['options']['unique_target'] ?? 'FIELD:XML_ID');
-if ($currentUniqueTarget !== '' && !isset($uniqueTargets[$currentUniqueTarget])) {
-    $uniqueTargets[$currentUniqueTarget] = $currentUniqueTarget;
+if (!isset($uniqueTargets[$currentUniqueTarget])) {
+    $currentUniqueTarget = (string) (array_key_first($uniqueTargets) ?? '');
 }
 
 $title = $id > 0
@@ -526,6 +567,9 @@ foreach ($errors as $error) {
                         <tbody>
                         <?php foreach ($form['mapping'] as $index => $rule) :
                             [$targetType, $targetCode] = array_pad(explode(':', (string) ($rule['target'] ?? 'PROPERTY:'), 2), 2, '');
+                            $destination = $targetType === 'PROPERTY'
+                                ? 'PROPERTY'
+                                : $targetType . ':' . $targetCode;
                             $transformsJson = json_encode($rule['transforms'] ?? [['type' => 'trim']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                             $defaultJson = array_key_exists('default', $rule)
                                 ? json_encode($rule['default'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
@@ -537,11 +581,23 @@ foreach ($errors as $error) {
                                 <td><input name="mapping_rows[<?= (int) $index ?>][label]" value="<?= htmlspecialcharsbx((string) ($rule['label'] ?? '')) ?>"></td>
                                 <td>
                                     <div class="wie-code-control">
-                                        <select name="mapping_rows[<?= (int) $index ?>][target_type]" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>">
-                                            <option value="FIELD"<?= $targetType === 'FIELD' ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_FIELD')) ?></option>
-                                            <option value="PROPERTY"<?= $targetType !== 'FIELD' ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY')) ?></option>
+                                        <select name="mapping_rows[<?= (int) $index ?>][destination]" data-mapping-destination aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>">
+                                            <option value="PROPERTY"<?= $destination === 'PROPERTY' ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY')) ?></option>
+                                            <?php foreach ($elementFieldGroups as $groupMessage => $fieldCodes) : ?>
+                                                <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage($groupMessage)) ?>">
+                                                    <?php foreach ($fieldCodes as $fieldCode) : ?>
+                                                        <option value="FIELD:<?= $fieldCode ?>"<?= $destination === 'FIELD:' . $fieldCode ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage($elementFieldMessages[$fieldCode])) ?></option>
+                                                    <?php endforeach; ?>
+                                                </optgroup>
+                                            <?php endforeach; ?>
+                                            <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_SECTIONS')) ?>">
+                                                <?php for ($level = 1; $level <= SectionPath::MAX_LEVEL; $level++) : ?>
+                                                    <option value="SECTION:<?= $level ?>"<?= $destination === 'SECTION:' . $level ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_SECTION_LEVEL'), $level)) ?></option>
+                                                <?php endfor; ?>
+                                            </optgroup>
                                         </select>
-                                        <input name="mapping_rows[<?= (int) $index ?>][target_code]" required pattern="[A-Z][A-Z0-9_]*" value="<?= htmlspecialcharsbx($targetCode) ?>" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_CODE')) ?>">
+                                        <span class="wie-system-code" data-fixed-destination<?= $destination === 'PROPERTY' ? ' hidden' : '' ?>><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SYSTEM_CODE')) ?></span><code data-destination-code><?= htmlspecialcharsbx($destination) ?></code></span>
+                                        <input name="mapping_rows[<?= (int) $index ?>][property_code]" data-property-code required pattern="[A-Z][A-Z0-9_]*" value="<?= htmlspecialcharsbx($targetType === 'PROPERTY' ? $targetCode : '') ?>"<?= $targetType === 'PROPERTY' ? '' : ' hidden disabled' ?> aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_CODE')) ?>">
                                     </div>
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][transforms_json]" value="<?= htmlspecialcharsbx((string) $transformsJson) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][default_json]" value="<?= htmlspecialcharsbx((string) $defaultJson) ?>">
@@ -636,6 +692,7 @@ foreach ($errors as $error) {
     var newTarget = document.getElementById('wie-new-target');
     var createTarget = document.getElementById('wie-create-target');
     var cancelTarget = document.getElementById('wie-cancel-target');
+    var mappingDestinations = document.querySelectorAll('[data-mapping-destination]');
     if (targetMode && newTarget && createTarget && cancelTarget) {
         createTarget.addEventListener('click', function () {
             targetMode.value = 'new';
@@ -648,6 +705,21 @@ foreach ($errors as $error) {
             document.getElementById('wie-target').focus();
         });
     }
+    Array.prototype.forEach.call(mappingDestinations, function (destinationSelect) {
+        var control = destinationSelect.closest('.wie-code-control');
+        var fixedDestination = control.querySelector('[data-fixed-destination]');
+        var destinationCode = control.querySelector('[data-destination-code]');
+        var propertyCode = control.querySelector('[data-property-code]');
+        var refreshDestination = function () {
+            var isProperty = destinationSelect.value === 'PROPERTY';
+            fixedDestination.hidden = isProperty;
+            propertyCode.hidden = !isProperty;
+            propertyCode.disabled = !isProperty;
+            destinationCode.textContent = destinationSelect.value;
+        };
+        destinationSelect.addEventListener('change', refreshDestination);
+        refreshDestination();
+    });
     Array.prototype.forEach.call(rows, function (row) {
         var radio = row.querySelector('input[type="radio"][name="header_row"]');
         if (!radio) {

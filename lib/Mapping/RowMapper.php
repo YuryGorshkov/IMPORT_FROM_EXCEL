@@ -19,6 +19,7 @@ final class RowMapper
         $this->validator->validate($mapping);
         $fields = [];
         $properties = [];
+        $sections = [];
 
         foreach ($mapping as $rule) {
             $column = strtoupper((string) $rule['column']);
@@ -35,11 +36,13 @@ final class RowMapper
             [$scope, $name] = explode(':', $target, 2);
             if ($scope === 'PROPERTY') {
                 $properties[$name] = $value;
+            } elseif ($scope === 'SECTION') {
+                $sections[(int) $name] = $value;
             } else {
                 $fields[$name] = $value;
             }
         }
 
-        return new MappedRow($row->number, $fields, $properties, $row->cells);
+        return new MappedRow($row->number, $fields, $properties, $row->cells, $sections);
     }
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.2 - 2026-09-24
+
+- Replaced free-form element field codes with a guided list of supported Bitrix fields.
+- Displayed the immutable Bitrix field code beside each friendly field name.
+- Added preview/detail text, preview/detail picture, activity, dates, tags, sorting and section fields.
+- Added protected image import from public HTTP/HTTPS URLs, `/upload` paths and existing Bitrix file IDs.
+- Rejected unsupported element field codes during mapping validation.
+- Added grouped destination selectors modeled after the `kda.importexcel` field picker.
+- Recognized numbered section columns as nested IBlock section paths instead of properties.
+- Added find-or-create behavior for nested sections and safe cleanup of empty imported sections during rollback.
+- Automatically upgraded legacy `RAZDEL_N_GO_UROVNYA` property mappings and invalid legacy element fields.
+
 ## 0.5.1 - 2026-09-24
 
 - Added profile-level element code generation from the item name or unique field.

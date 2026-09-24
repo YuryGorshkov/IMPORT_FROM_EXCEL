@@ -6,6 +6,7 @@ namespace WebEnot\ImportExcel\Target;
 
 use WebEnot\ImportExcel\Domain\ImportProfile;
 use WebEnot\ImportExcel\Mapping\MappedRow;
+use WebEnot\ImportExcel\Mapping\SectionPath;
 
 final class IblockTarget
 {
@@ -39,13 +40,25 @@ final class IblockTarget
             return new TargetResult('skipped', (int) $existing['ID']);
         }
 
+        [$row, $createdSectionIds] = $this->withSectionPath($profile, $row, !$dryRun);
+
         if ($existing === null) {
             $row = $this->withElementCode($profile, $row);
             if ($dryRun) {
-                return new TargetResult('added', 0, [], ['fields' => $row->fields, 'properties' => $row->properties]);
+                return new TargetResult('added', 0, [], $this->previewData($row));
             }
-            $id = $this->gateway->add($profile->targetId, $row);
-            return new TargetResult('added', $id, [], $this->gateway->snapshot($id));
+            try {
+                $id = $this->gateway->add($profile->targetId, $row);
+                $after = $this->gateway->snapshot($id);
+            } catch (\Throwable $exception) {
+                try {
+                    $this->gateway->deleteSectionsIfEmpty($createdSectionIds);
+                } catch (\Throwable) {
+                }
+                throw $exception;
+            }
+            $after['created_section_ids'] = $createdSectionIds;
+            return new TargetResult('added', $id, [], $after);
         }
 
         $id = (int) $existing['ID'];
@@ -57,10 +70,20 @@ final class IblockTarget
             trim((string) ($before['fields']['CODE'] ?? '')) !== ''
         );
         if ($dryRun) {
-            return new TargetResult('updated', $id, $before, ['fields' => $row->fields, 'properties' => $row->properties]);
+            return new TargetResult('updated', $id, $before, $this->previewData($row));
         }
-        $this->gateway->update($id, $row);
-        return new TargetResult('updated', $id, $before, $this->gateway->snapshot($id));
+        try {
+            $this->gateway->update($id, $row);
+            $after = $this->gateway->snapshot($id);
+        } catch (\Throwable $exception) {
+            try {
+                $this->gateway->deleteSectionsIfEmpty($createdSectionIds);
+            } catch (\Throwable) {
+            }
+            throw $exception;
+        }
+        $after['created_section_ids'] = $createdSectionIds;
+        return new TargetResult('updated', $id, $before, $after);
     }
 
     private function withElementCode(
@@ -76,7 +99,7 @@ final class IblockTarget
         }
         if ($existingHasCode) {
             unset($fields['CODE']);
-            return new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw);
+            return new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections);
         }
 
         $source = $profile->elementCodeSource();
@@ -93,6 +116,38 @@ final class IblockTarget
         }
 
         $fields['CODE'] = $this->gateway->uniqueCode($profile->targetId, $baseCode, $elementId);
-        return new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw);
+        return new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections);
+    }
+
+    /**
+     * @return array{0: MappedRow, 1: list<int>}
+     */
+    private function withSectionPath(ImportProfile $profile, MappedRow $row, bool $create): array
+    {
+        $names = SectionPath::normalize($row->sections);
+        if ($names === []) {
+            return [$row, []];
+        }
+
+        $result = $this->gateway->resolveSectionPath($profile->targetId, $names, $create);
+        if ($result->sectionId === null) {
+            return [$row, $result->createdIds];
+        }
+
+        $fields = $row->fields;
+        $fields['IBLOCK_SECTION_ID'] = $result->sectionId;
+        return [
+            new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections),
+            $result->createdIds,
+        ];
+    }
+
+    private function previewData(MappedRow $row): array
+    {
+        return [
+            'fields' => $row->fields,
+            'properties' => $row->properties,
+            'sections' => SectionPath::normalize($row->sections),
+        ];
     }
 }

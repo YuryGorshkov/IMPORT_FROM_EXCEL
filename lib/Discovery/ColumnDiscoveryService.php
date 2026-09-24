@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace WebEnot\ImportExcel\Discovery;
 
 use WebEnot\ImportExcel\Reader\ReaderInterface;
+use WebEnot\ImportExcel\Mapping\SectionPath;
 
 final class ColumnDiscoveryService
 {
@@ -54,11 +55,14 @@ final class ColumnDiscoveryService
             }
             $usedCodes[$code] = true;
             $systemField = self::SYSTEM_FIELDS[$baseCode] ?? null;
+            $sectionLevel = SectionPath::levelFromHeaderCode($baseCode);
             $columns[] = [
                 'column' => $column,
                 'label' => $label,
                 'code' => $code,
-                'target' => $systemField !== null ? 'FIELD:' . $systemField : 'PROPERTY:' . $code,
+                'target' => $sectionLevel !== null
+                    ? SectionPath::target($sectionLevel)
+                    : ($systemField !== null ? 'FIELD:' . $systemField : 'PROPERTY:' . $code),
                 'required' => $systemField === 'NAME',
                 'transforms' => [['type' => 'trim']],
             ];

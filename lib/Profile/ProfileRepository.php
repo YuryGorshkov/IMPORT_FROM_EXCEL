@@ -7,6 +7,7 @@ namespace WebEnot\ImportExcel\Profile;
 use Bitrix\Main\Type\DateTime;
 use WebEnot\ImportExcel\Domain\ImportProfile;
 use WebEnot\ImportExcel\Mapping\MappingValidator;
+use WebEnot\ImportExcel\Mapping\SectionPath;
 use WebEnot\ImportExcel\Orm\ProfileTable;
 use WebEnot\ImportExcel\Support\Json;
 
@@ -28,10 +29,12 @@ final class ProfileRepository
     public function save(array $data): int
     {
         $mapping = is_string($data['mapping'] ?? null) ? Json::decode($data['mapping']) : (array) ($data['mapping'] ?? []);
+        $mapping = SectionPath::upgradeLegacyMapping($mapping);
         $options = is_string($data['options'] ?? null) ? Json::decode($data['options']) : (array) ($data['options'] ?? []);
         $sourceConfig = is_string($data['source_config'] ?? null)
             ? Json::decode($data['source_config'])
             : (array) ($data['source_config'] ?? []);
+        $options = $this->normalizeUniqueTarget($options, $mapping);
         $this->mappingValidator->validate($mapping);
 
         $fields = [
@@ -66,13 +69,35 @@ final class ProfileRepository
 
     private function hydrate(array $record): ImportProfile
     {
+        $mapping = SectionPath::upgradeLegacyMapping(Json::decode((string) $record['MAPPING']));
+        $options = $this->normalizeUniqueTarget(
+            Json::decode((string) $record['OPTIONS']),
+            $mapping
+        );
         return new ImportProfile(
             (int) $record['ID'],
             (string) $record['NAME'],
             (int) $record['TARGET_ID'],
-            Json::decode((string) $record['MAPPING']),
-            Json::decode((string) $record['OPTIONS']),
+            $mapping,
+            $options,
             Json::decode((string) $record['SOURCE_CONFIG']),
         );
+    }
+
+    private function normalizeUniqueTarget(array $options, array $mapping): array
+    {
+        $targets = [];
+        foreach ($mapping as $rule) {
+            $target = strtoupper((string) ($rule['target'] ?? ''));
+            if ($target !== '' && !SectionPath::isTarget($target)) {
+                $targets[] = $target;
+            }
+        }
+        $current = strtoupper((string) ($options['unique_target'] ?? ''));
+        if (!in_array($current, $targets, true)) {
+            $options['unique_target'] = (string) ($targets[0] ?? 'FIELD:XML_ID');
+        }
+
+        return $options;
     }
 }

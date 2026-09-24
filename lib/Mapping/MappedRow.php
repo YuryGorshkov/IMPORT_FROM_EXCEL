@@ -11,12 +11,17 @@ final class MappedRow
         public readonly array $fields,
         public readonly array $properties,
         public readonly array $raw,
+        public readonly array $sections = [],
     ) {
     }
 
     public function value(string $target): mixed
     {
         [$scope, $name] = array_pad(explode(':', strtoupper($target), 2), 2, '');
-        return $scope === 'PROPERTY' ? ($this->properties[$name] ?? null) : ($this->fields[$name] ?? null);
+        return match ($scope) {
+            'PROPERTY' => $this->properties[$name] ?? null,
+            'SECTION' => $this->sections[(int) $name] ?? null,
+            default => $this->fields[$name] ?? null,
+        };
     }
 }

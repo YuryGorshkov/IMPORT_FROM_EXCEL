@@ -6,12 +6,15 @@ namespace WebEnot\ImportExcel\Tests\Support;
 
 use WebEnot\ImportExcel\Mapping\MappedRow;
 use WebEnot\ImportExcel\Target\IblockGatewayInterface;
+use WebEnot\ImportExcel\Target\SectionPathResult;
 
 final class CodeCaptureGateway implements IblockGatewayInterface
 {
     public ?array $existing = null;
     public array $snapshots = [];
     public string $lastBaseCode = '';
+    public array $sectionPaths = [];
+    public array $deletedSectionIds = [];
 
     public function ensureProperties(int $iblockId, array $definitions): void
     {
@@ -26,6 +29,12 @@ final class CodeCaptureGateway implements IblockGatewayInterface
     {
         $this->lastBaseCode = $baseCode;
         return $baseCode;
+    }
+
+    public function resolveSectionPath(int $iblockId, array $names, bool $create): SectionPathResult
+    {
+        $this->sectionPaths[] = ['iblock_id' => $iblockId, 'names' => $names, 'create' => $create];
+        return new SectionPathResult($create ? 77 : null, $create ? [70, 77] : []);
     }
 
     public function snapshot(int $elementId): array
@@ -48,5 +57,10 @@ final class CodeCaptureGateway implements IblockGatewayInterface
 
     public function restore(int $elementId, array $snapshot): void
     {
+    }
+
+    public function deleteSectionsIfEmpty(array $sectionIds): void
+    {
+        $this->deletedSectionIds = $sectionIds;
     }
 }
