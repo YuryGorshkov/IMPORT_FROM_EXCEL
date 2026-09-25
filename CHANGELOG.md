@@ -5,6 +5,7 @@
 - Simplified mapping labels for content managers: only friendly destinations and transliterated source-column codes are displayed.
 - Made the visible Latin code depend on the Excel header rather than the selected Bitrix destination.
 - Removed PHP variables and API-specific prefixes from the profile form while preserving internal mappings unchanged.
+- Displayed iblock identifiers as `ID 3` instead of the less explicit `#3`.
 
 ## 0.8.1 - 2026-09-25
 

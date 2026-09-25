@@ -57,7 +57,7 @@ while ($record = $result->NavNext(true, 'f_')) {
     $row = $list->AddRow((string) $f_ID, $record, $editUrl);
     $row->AddViewField('NAME', '<a href="' . htmlspecialcharsbx($editUrl) . '"><strong>' . htmlspecialcharsbx($f_NAME) . '</strong></a>');
     $targetName = $iblockNames[(int) $f_TARGET_ID] ?? (string) Loc::getMessage('WIE_PROFILES_TARGET_UNKNOWN');
-    $row->AddViewField('TARGET_ID', htmlspecialcharsbx($targetName) . ' <span style="color:#7a8991">#' . (int) $f_TARGET_ID . '</span>');
+    $row->AddViewField('TARGET_ID', htmlspecialcharsbx($targetName) . ' <span style="color:#7a8991">ID ' . (int) $f_TARGET_ID . '</span>');
     $row->AddViewField(
         'ACTIVE',
         AdminUi::badge(

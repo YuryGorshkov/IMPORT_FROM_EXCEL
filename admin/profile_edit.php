@@ -503,7 +503,7 @@ foreach ($errors as $error) {
                             <option value=""><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_CHOOSE')) ?></option>
                             <?php foreach ($iblocks as $iblock) :
                                 $iblockId = (int) $iblock['ID'];
-                                $iblockLabel = (string) $iblock['NAME'] . ' · ' . (string) $iblock['IBLOCK_TYPE_ID'] . ' · #' . $iblockId;
+                                $iblockLabel = (string) $iblock['NAME'] . ' · ' . (string) $iblock['IBLOCK_TYPE_ID'] . ' · ID ' . $iblockId;
                                 $supportsNestedUrl = str_contains(
                                     (string) ($iblock['SECTION_PAGE_URL'] ?? ''),
                                     '#SECTION_CODE_PATH#'
