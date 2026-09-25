@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 - 2026-09-25
+
+- Split the mapping destination and the transliterated Excel header into separate columns.
+- Added selectable existing iblock properties with their real names, codes, types and multiplicity.
+- Kept new-property creation as an explicit choice so existing properties are updated without duplicate creation.
+- Grouped secondary element fields separately and added clear type labels for numbers, dates, booleans and text formats.
+- Added strict value normalization for numeric properties, sorting, activity flags, date/time fields and `text/html` modes.
+
 ## 0.8.2 - 2026-09-25
 
 - Simplified mapping labels for content managers: only friendly destinations and transliterated source-column codes are displayed.

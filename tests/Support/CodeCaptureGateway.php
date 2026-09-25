@@ -15,9 +15,11 @@ final class CodeCaptureGateway implements IblockGatewayInterface
     public string $lastBaseCode = '';
     public array $sectionPaths = [];
     public array $deletedSectionIds = [];
+    public array $ensuredDefinitions = [];
 
     public function ensureProperties(int $iblockId, array $definitions): void
     {
+        $this->ensuredDefinitions = $definitions;
     }
 
     public function find(int $iblockId, string $uniqueTarget, mixed $value): ?array

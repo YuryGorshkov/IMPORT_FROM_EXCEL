@@ -86,6 +86,7 @@ function webenotImportExcelMappingFromRequest(array $rows): array
             if ($choice !== '') {
                 $rule['property_type'] = $decodedChoice['property_type'];
                 $rule['multiple'] = $decodedChoice['multiple'];
+                $rule['create_if_missing'] = $decodedChoice['create_if_missing'];
             } else {
                 $propertyType = strtoupper(trim((string) ($row['property_type'] ?? 'S')));
                 $rule['property_type'] = in_array($propertyType, ['S', 'F'], true) ? $propertyType : 'S';
@@ -180,13 +181,15 @@ $elementFieldMessages = [
 ];
 $elementFieldGroups = [
     'WIE_PROFILE_GROUP_ELEMENT' => [
-        'NAME', 'CODE', 'XML_ID', 'ACTIVE', 'SORT', 'TAGS',
-        'DATE_ACTIVE_FROM', 'DATE_ACTIVE_TO', 'IBLOCK_SECTION_ID',
+        'NAME', 'XML_ID', 'CODE',
     ],
     'WIE_PROFILE_GROUP_TEXTS' => [
         'PREVIEW_TEXT', 'PREVIEW_TEXT_TYPE', 'DETAIL_TEXT', 'DETAIL_TEXT_TYPE',
     ],
     'WIE_PROFILE_GROUP_IMAGES' => ['PREVIEW_PICTURE', 'DETAIL_PICTURE'],
+    'WIE_PROFILE_GROUP_SERVICE_FIELDS' => [
+        'ACTIVE', 'SORT', 'TAGS', 'DATE_ACTIVE_FROM', 'DATE_ACTIVE_TO',
+    ],
 ];
 $sectionFieldMessages = [
     'ID' => 'WIE_PROFILE_SECTION_FIELD_ID',
@@ -199,6 +202,14 @@ $sectionFieldMessages = [
     'DESCRIPTION_TYPE' => 'WIE_PROFILE_SECTION_FIELD_DESCRIPTION_TYPE',
     'PICTURE' => 'WIE_PROFILE_SECTION_FIELD_PICTURE',
     'DETAIL_PICTURE' => 'WIE_PROFILE_SECTION_FIELD_DETAIL_PICTURE',
+];
+$propertyTypeMessages = [
+    'S' => 'WIE_PROFILE_PROPERTY_TYPE_STRING',
+    'N' => 'WIE_PROFILE_PROPERTY_TYPE_NUMBER',
+    'L' => 'WIE_PROFILE_PROPERTY_TYPE_LIST',
+    'F' => 'WIE_PROFILE_PROPERTY_TYPE_FILE',
+    'E' => 'WIE_PROFILE_PROPERTY_TYPE_ELEMENT',
+    'G' => 'WIE_PROFILE_PROPERTY_TYPE_SECTION',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
@@ -396,6 +407,37 @@ $iblockResult = CIBlock::GetList(['IBLOCK_TYPE_ID' => 'ASC', 'NAME' => 'ASC'], [
 while ($iblock = $iblockResult->Fetch()) {
     $iblocks[] = $iblock;
 }
+$iblockPropertyOptions = [];
+$propertyResult = CIBlockProperty::GetList(['SORT' => 'ASC', 'NAME' => 'ASC'], []);
+while ($property = $propertyResult->Fetch()) {
+    $iblockId = (int) ($property['IBLOCK_ID'] ?? 0);
+    $propertyCode = strtoupper(trim((string) ($property['CODE'] ?? '')));
+    $propertyType = strtoupper(trim((string) ($property['PROPERTY_TYPE'] ?? 'S')));
+    if (
+        $iblockId < 1
+        || preg_match('/^[A-Z][A-Z0-9_]*$/', $propertyCode) !== 1
+        || !isset($propertyTypeMessages[$propertyType])
+    ) {
+        continue;
+    }
+
+    $multiple = ($property['MULTIPLE'] ?? 'N') === 'Y';
+    $typeLabel = (string) Loc::getMessage($propertyTypeMessages[$propertyType]);
+    if ($multiple) {
+        $typeLabel .= ', ' . (string) Loc::getMessage('WIE_PROFILE_PROPERTY_MULTIPLE_SHORT');
+    }
+    $propertyLabel = trim((string) ($property['NAME'] ?? '')) ?: $propertyCode;
+    $optionLabel = sprintf('%s [%s] · %s', $propertyLabel, $propertyCode, $typeLabel);
+    if (($property['ACTIVE'] ?? 'Y') !== 'Y') {
+        $optionLabel .= ' · ' . (string) Loc::getMessage('WIE_PROFILE_PROPERTY_INACTIVE');
+    }
+
+    $iblockPropertyOptions[$iblockId][$propertyCode] = [
+        'value' => MappingChoice::existingProperty($propertyCode, $propertyType, $multiple),
+        'label' => $optionLabel,
+        'code' => $propertyCode,
+    ];
+}
 $hasSectionMapping = (bool) array_filter(
     $form['mapping'],
     static fn(array $rule): bool => SectionPath::isTarget((string) ($rule['target'] ?? ''))
@@ -413,22 +455,8 @@ if (!isset($iblockTypes[$newIblockType])) {
 
 $mappingSourceCodes = [];
 $usedPropertyCodes = [];
-foreach ($form['mapping'] as $index => $rule) {
-    $target = strtoupper((string) ($rule['target'] ?? ''));
-    if (!str_starts_with($target, 'PROPERTY:')) {
-        continue;
-    }
-    $propertyCode = substr($target, 9);
-    if ($propertyCode !== '') {
-        $mappingSourceCodes[$index] = $propertyCode;
-        $usedPropertyCodes[$propertyCode] = true;
-    }
-}
 $headerNormalizer = new HeaderNormalizer();
 foreach ($form['mapping'] as $index => $rule) {
-    if (isset($mappingSourceCodes[$index])) {
-        continue;
-    }
     $baseCode = $headerNormalizer->normalize(
         (string) ($rule['label'] ?? ''),
         'COLUMN_' . (string) ($rule['column'] ?? $index + 1)
@@ -442,6 +470,16 @@ foreach ($form['mapping'] as $index => $rule) {
     $mappingSourceCodes[$index] = $propertyCode;
     $usedPropertyCodes[$propertyCode] = true;
 }
+
+$selectedIblockProperties = $iblockPropertyOptions[(int) $form['target_id']] ?? [];
+$iblockPropertyOptionsForJs = [];
+foreach ($iblockPropertyOptions as $iblockId => $options) {
+    $iblockPropertyOptionsForJs[(string) $iblockId] = array_values($options);
+}
+$iblockPropertyOptionsJson = json_encode(
+    $iblockPropertyOptionsForJs,
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
 
 $uniqueTargets = [];
 foreach ($form['mapping'] as $index => $rule) {
@@ -656,12 +694,20 @@ foreach ($errors as $error) {
                             <th class="wie-col-source"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_COLUMN')) ?></th>
                             <th><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_HEADER')) ?></th>
                             <th><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET')) ?></th>
+                            <th class="wie-col-code"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SOURCE_CODE')) ?></th>
                             <th class="wie-col-required"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_REQUIRED')) ?></th>
                         </tr></thead>
                         <tbody>
                         <?php foreach ($form['mapping'] as $index => $rule) :
                             $choice = MappingChoice::fromRule($rule);
                             $sourceCode = (string) ($mappingSourceCodes[$index] ?? 'COLUMN_' . ($index + 1));
+                            $ruleTarget = strtoupper((string) ($rule['target'] ?? ''));
+                            if (str_starts_with($ruleTarget, 'PROPERTY:')) {
+                                $existingPropertyCode = substr($ruleTarget, 9);
+                                if (isset($selectedIblockProperties[$existingPropertyCode])) {
+                                    $choice = (string) $selectedIblockProperties[$existingPropertyCode]['value'];
+                                }
+                            }
                             $transformsJson = json_encode($rule['transforms'] ?? [['type' => 'trim']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                             $defaultJson = array_key_exists('default', $rule)
                                 ? json_encode($rule['default'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
@@ -672,17 +718,22 @@ foreach ($errors as $error) {
                                 <td><strong><?= htmlspecialcharsbx((string) ($rule['column'] ?? '')) ?></strong><input type="hidden" name="mapping_rows[<?= (int) $index ?>][column]" value="<?= htmlspecialcharsbx((string) ($rule['column'] ?? '')) ?>"></td>
                                 <td><span class="wie-source-label"><?= htmlspecialcharsbx((string) ($rule['label'] ?? '')) ?></span><input type="hidden" name="mapping_rows[<?= (int) $index ?>][label]" value="<?= htmlspecialcharsbx((string) ($rule['label'] ?? '')) ?>"></td>
                                 <td>
-                                    <select name="mapping_rows[<?= (int) $index ?>][choice]" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>">
-                                        <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_PROPERTIES')) ?>">
-                                            <option value="<?= MappingChoice::PROPERTY_VALUE ?>"<?= $choice === MappingChoice::PROPERTY_VALUE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE'), $sourceCode)) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE_MULTIPLE'), $sourceCode)) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_FILE ?>"<?= $choice === MappingChoice::PROPERTY_FILE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE'), $sourceCode)) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_FILE_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_FILE_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE_MULTIPLE'), $sourceCode)) ?></option>
+                                    <select class="wie-mapping-choice" name="mapping_rows[<?= (int) $index ?>][choice]" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>">
+                                        <optgroup data-existing-properties label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_EXISTING_PROPERTIES')) ?>">
+                                            <?php foreach ($selectedIblockProperties as $propertyOption) : ?>
+                                                <option value="<?= htmlspecialcharsbx((string) $propertyOption['value']) ?>"<?= $choice === $propertyOption['value'] ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) $propertyOption['label']) ?></option>
+                                            <?php endforeach; ?>
+                                        </optgroup>
+                                        <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_NEW_PROPERTIES')) ?>">
+                                            <option value="<?= MappingChoice::PROPERTY_VALUE ?>"<?= $choice === MappingChoice::PROPERTY_VALUE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE')) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE_MULTIPLE')) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_FILE ?>"<?= $choice === MappingChoice::PROPERTY_FILE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE')) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_FILE_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_FILE_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE_MULTIPLE')) ?></option>
                                         </optgroup>
                                         <?php foreach ($elementFieldGroups as $groupMessage => $fieldCodes) : ?>
                                             <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage($groupMessage)) ?>">
                                                 <?php foreach ($fieldCodes as $fieldCode) : ?>
-                                                    <option value="FIELD:<?= $fieldCode ?>"<?= $choice === 'FIELD:' . $fieldCode ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf('%s — %s', (string) Loc::getMessage($elementFieldMessages[$fieldCode]), $sourceCode)) ?></option>
+                                                    <option value="FIELD:<?= $fieldCode ?>"<?= $choice === 'FIELD:' . $fieldCode ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage($elementFieldMessages[$fieldCode])) ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endforeach; ?>
@@ -691,15 +742,15 @@ foreach ($errors as $error) {
                                                 <?php foreach (SectionFieldCatalog::codes() as $sectionFieldCode) :
                                                     $sectionDestination = SectionPath::target($level, $sectionFieldCode);
                                                     ?>
-                                                    <option value="<?= htmlspecialcharsbx($sectionDestination) ?>"<?= $choice === $sectionDestination ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf('%s — %s', (string) Loc::getMessage($sectionFieldMessages[$sectionFieldCode]), $sourceCode)) ?></option>
+                                                    <option value="<?= htmlspecialcharsbx($sectionDestination) ?>"<?= $choice === $sectionDestination ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage($sectionFieldMessages[$sectionFieldCode])) ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endfor; ?>
                                     </select>
-                                    <input type="hidden" name="mapping_rows[<?= (int) $index ?>][property_code]" value="<?= htmlspecialcharsbx($sourceCode) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][transforms_json]" value="<?= htmlspecialcharsbx((string) $transformsJson) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][default_json]" value="<?= htmlspecialcharsbx((string) $defaultJson) ?>">
                                 </td>
+                                <td class="wie-col-code"><input class="wie-source-code" type="text" readonly name="mapping_rows[<?= (int) $index ?>][property_code]" value="<?= htmlspecialcharsbx($sourceCode) ?>" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SOURCE_CODE')) ?>"></td>
                                 <td class="wie-col-required"><input type="checkbox" name="mapping_rows[<?= (int) $index ?>][required]" value="Y"<?= !empty($rule['required']) ? ' checked' : '' ?> aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_REQUIRED')) ?>"></td>
                             </tr>
                         <?php endforeach; ?>
@@ -792,24 +843,61 @@ foreach ($errors as $error) {
     var newTarget = document.getElementById('wie-new-target');
     var createTarget = document.getElementById('wie-create-target');
     var cancelTarget = document.getElementById('wie-cancel-target');
+    var propertyOptionsByIblock = <?= $iblockPropertyOptionsJson ?: '{}' ?>;
+    var mappingChoices = document.querySelectorAll('.wie-mapping-choice');
+    var refreshExistingProperties = function (clear) {
+        var iblockId = !clear && targetSelect ? targetSelect.value : '';
+        var properties = propertyOptionsByIblock[iblockId] || [];
+        Array.prototype.forEach.call(mappingChoices, function (select) {
+            var group = select.querySelector('optgroup[data-existing-properties]');
+            if (!group) {
+                return;
+            }
+            var currentValue = select.value;
+            while (group.firstChild) {
+                group.removeChild(group.firstChild);
+            }
+            properties.forEach(function (property) {
+                var option = document.createElement('option');
+                option.value = property.value;
+                option.textContent = property.label;
+                group.appendChild(option);
+            });
+            var currentStillExists = Array.prototype.some.call(select.options, function (option) {
+                return option.value === currentValue;
+            });
+            if (currentStillExists) {
+                select.value = currentValue;
+            } else if (currentValue.indexOf('EXISTING_PROPERTY:') === 0) {
+                select.value = 'PROPERTY:S:0';
+            }
+        });
+    };
     if (targetMode && newTarget && createTarget && cancelTarget) {
         createTarget.addEventListener('click', function () {
             targetMode.value = 'new';
             newTarget.hidden = false;
+            refreshExistingProperties(true);
             document.getElementById('wie-new-target-name').focus();
         });
         cancelTarget.addEventListener('click', function () {
             targetMode.value = 'existing';
             newTarget.hidden = true;
+            refreshExistingProperties(false);
             document.getElementById('wie-target').focus();
         });
     }
-    if (targetSelect && urlWarning) {
+    if (targetSelect) {
         var refreshUrlWarning = function () {
             var option = targetSelect.options[targetSelect.selectedIndex];
-            urlWarning.hidden = !option || option.value === '' || option.getAttribute('data-nested-url') === 'Y';
+            if (urlWarning) {
+                urlWarning.hidden = !option || option.value === '' || option.getAttribute('data-nested-url') === 'Y';
+            }
         };
-        targetSelect.addEventListener('change', refreshUrlWarning);
+        targetSelect.addEventListener('change', function () {
+            refreshUrlWarning();
+            refreshExistingProperties(false);
+        });
         refreshUrlWarning();
     }
     Array.prototype.forEach.call(rows, function (row) {

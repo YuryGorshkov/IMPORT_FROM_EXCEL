@@ -17,6 +17,7 @@ final class MappingChoiceTest extends TestCase
             'code' => 'ARTIKUL',
             'property_type' => 'S',
             'multiple' => false,
+            'create_if_missing' => true,
         ], MappingChoice::decode(MappingChoice::PROPERTY_VALUE, 'artikul'));
     }
 
@@ -27,7 +28,22 @@ final class MappingChoiceTest extends TestCase
             'code' => 'GALLERY',
             'property_type' => 'F',
             'multiple' => true,
+            'create_if_missing' => true,
         ], MappingChoice::decode(MappingChoice::PROPERTY_FILE_MULTIPLE, 'GALLERY'));
+    }
+
+    public function testDecodesAnExistingNumberProperty(): void
+    {
+        $choice = MappingChoice::existingProperty('price', 'N', false);
+
+        self::assertSame('EXISTING_PROPERTY:N:0:PRICE', $choice);
+        self::assertSame([
+            'target' => 'PROPERTY:PRICE',
+            'code' => 'PRICE',
+            'property_type' => 'N',
+            'multiple' => false,
+            'create_if_missing' => false,
+        ], MappingChoice::decode($choice, 'IGNORED'));
     }
 
     public function testDecodesElementAndNestedSectionFields(): void
@@ -57,6 +73,12 @@ final class MappingChoiceTest extends TestCase
         ]));
         self::assertSame('SECTION:2:NAME', MappingChoice::fromRule([
             'target' => 'SECTION:2:NAME',
+        ]));
+        self::assertSame('EXISTING_PROPERTY:L:1:COLOR', MappingChoice::fromRule([
+            'target' => 'PROPERTY:COLOR',
+            'property_type' => 'L',
+            'multiple' => true,
+            'create_if_missing' => false,
         ]));
     }
 }

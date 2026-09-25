@@ -112,6 +112,28 @@ final class IblockTargetTest extends TestCase
         self::assertSame([70, 77], $result->after['created_section_ids']);
     }
 
+    public function testValidatesOnlySelectedExistingPropertiesWhenAutoCreationIsDisabled(): void
+    {
+        $gateway = new CodeCaptureGateway();
+        $target = $this->target($gateway);
+        $profile = new ImportProfile(
+            1,
+            'Тест',
+            5,
+            [
+                ['column' => 'A', 'target' => 'PROPERTY:EXISTING', 'create_if_missing' => false],
+                ['column' => 'B', 'target' => 'PROPERTY:NEW_ONE', 'create_if_missing' => true],
+            ],
+            ['auto_create_properties' => false]
+        );
+
+        $target->prepare($profile);
+
+        self::assertSame([
+            ['column' => 'A', 'target' => 'PROPERTY:EXISTING', 'create_if_missing' => false],
+        ], $gateway->ensuredDefinitions);
+    }
+
     private function target(CodeCaptureGateway $gateway): IblockTarget
     {
         return new IblockTarget($gateway, new ElementCodeGenerator(new HeaderNormalizer()));

@@ -18,8 +18,19 @@ final class IblockTarget
 
     public function prepare(ImportProfile $profile, bool $dryRun = false): void
     {
-        if (!$dryRun && ($profile->options['auto_create_properties'] ?? true) === true) {
-            $this->gateway->ensureProperties($profile->targetId, $profile->mapping);
+        if ($dryRun) {
+            return;
+        }
+
+        $definitions = $profile->mapping;
+        if (($profile->options['auto_create_properties'] ?? true) !== true) {
+            $definitions = array_values(array_filter(
+                $definitions,
+                static fn(array $definition): bool => ($definition['create_if_missing'] ?? true) === false
+            ));
+        }
+        if ($definitions !== []) {
+            $this->gateway->ensureProperties($profile->targetId, $definitions);
         }
     }
 

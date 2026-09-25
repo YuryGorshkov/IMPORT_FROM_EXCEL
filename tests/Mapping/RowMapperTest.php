@@ -86,4 +86,22 @@ final class RowMapperTest extends TestCase
 
         self::assertSame('https://cdn.example.test/photo.png', $mapped->fields['DETAIL_PICTURE']);
     }
+
+    public function testNormalizesTypedBitrixDestinations(): void
+    {
+        $mapper = new RowMapper(new Transformer(), new MappingValidator());
+        $mapped = $mapper->map(new Row(2, [
+            'A' => '500',
+            'B' => '2026-09-25 12:30:00',
+            'C' => '12,5',
+        ]), [
+            ['column' => 'A', 'target' => 'FIELD:SORT'],
+            ['column' => 'B', 'target' => 'FIELD:DATE_ACTIVE_FROM'],
+            ['column' => 'C', 'target' => 'PROPERTY:PRICE', 'property_type' => 'N'],
+        ]);
+
+        self::assertSame(500, $mapped->fields['SORT']);
+        self::assertSame('25.09.2026 12:30:00', $mapped->fields['DATE_ACTIVE_FROM']);
+        self::assertSame(12.5, $mapped->properties['PRICE']);
+    }
 }

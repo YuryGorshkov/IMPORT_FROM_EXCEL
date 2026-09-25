@@ -54,6 +54,13 @@ final class BitrixIblockGateway implements IblockGatewayInterface
                 }
                 continue;
             }
+            if (($definition['create_if_missing'] ?? true) === false) {
+                throw new \RuntimeException(sprintf(
+                    'Selected property %s no longer exists in IBlock %d.',
+                    $code,
+                    $iblockId
+                ));
+            }
 
             $property = new \CIBlockProperty();
             $id = $property->Add([

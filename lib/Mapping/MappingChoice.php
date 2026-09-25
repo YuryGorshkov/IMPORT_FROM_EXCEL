@@ -11,6 +11,23 @@ final class MappingChoice
     public const PROPERTY_FILE = 'PROPERTY:F:0';
     public const PROPERTY_FILE_MULTIPLE = 'PROPERTY:F:1';
 
+    public static function existingProperty(
+        string $code,
+        string $propertyType,
+        bool $multiple
+    ): string {
+        $code = strtoupper(trim($code));
+        $propertyType = strtoupper(trim($propertyType));
+        if (
+            preg_match('/^[A-Z][A-Z0-9_]*$/', $code) !== 1
+            || !in_array($propertyType, ['S', 'N', 'L', 'F', 'E', 'G'], true)
+        ) {
+            throw new MappingException('Invalid existing property definition.');
+        }
+
+        return sprintf('EXISTING_PROPERTY:%s:%d:%s', $propertyType, $multiple ? 1 : 0, $code);
+    }
+
     public static function fromRule(array $rule): string
     {
         $target = strtoupper(trim((string) ($rule['target'] ?? '')));
@@ -18,14 +35,27 @@ final class MappingChoice
             return $target;
         }
 
-        $type = strtoupper((string) ($rule['property_type'] ?? 'S')) === 'F' ? 'F' : 'S';
+        $type = strtoupper((string) ($rule['property_type'] ?? 'S'));
+        if (!in_array($type, ['S', 'N', 'L', 'F', 'E', 'G'], true)) {
+            $type = 'S';
+        }
         $multiple = !empty($rule['multiple']) ? '1' : '0';
 
-        return 'PROPERTY:' . $type . ':' . $multiple;
+        if (($rule['create_if_missing'] ?? true) === false) {
+            return self::existingProperty(substr($target, 9), $type, $multiple === '1');
+        }
+
+        return 'PROPERTY:' . ($type === 'F' ? 'F' : 'S') . ':' . $multiple;
     }
 
     /**
-     * @return array{target: string, code: string, property_type?: string, multiple?: bool}
+     * @return array{
+     *     target: string,
+     *     code: string,
+     *     property_type?: string,
+     *     multiple?: bool,
+     *     create_if_missing?: bool
+     * }
      */
     public static function decode(string $choice, string $propertyCode): array
     {
@@ -41,6 +71,17 @@ final class MappingChoice
                 'code' => $propertyCode,
                 'property_type' => $matches[1],
                 'multiple' => $matches[2] === '1',
+                'create_if_missing' => true,
+            ];
+        }
+
+        if (preg_match('/^EXISTING_PROPERTY:([SNLFEG]):([01]):([A-Z][A-Z0-9_]*)$/', $choice, $matches) === 1) {
+            return [
+                'target' => 'PROPERTY:' . $matches[3],
+                'code' => $matches[3],
+                'property_type' => $matches[1],
+                'multiple' => $matches[2] === '1',
+                'create_if_missing' => false,
             ];
         }
 
