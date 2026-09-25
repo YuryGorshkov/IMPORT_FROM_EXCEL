@@ -56,7 +56,12 @@ final class IblockTarget
         if ($existing === null) {
             $row = $this->withElementCode($profile, $row);
             if ($dryRun) {
-                return new TargetResult('added', 0, [], $this->previewData($row));
+                return new TargetResult(
+                    'added',
+                    0,
+                    ['section_snapshots' => $sectionResult->beforeSnapshots],
+                    $this->previewData($row)
+                );
             }
             try {
                 $id = $this->gateway->add($profile->targetId, $row);
@@ -82,10 +87,11 @@ final class IblockTarget
             $id,
             trim((string) ($before['fields']['CODE'] ?? '')) !== ''
         );
+        $before = $this->rollbackSnapshot($before, $row);
+        $before['section_snapshots'] = $sectionResult->beforeSnapshots;
         if ($dryRun) {
             return new TargetResult('updated', $id, $before, $this->previewData($row));
         }
-        $before['section_snapshots'] = $sectionResult->beforeSnapshots;
         try {
             $this->gateway->update($id, $row);
             $after = $this->gateway->snapshot($id);
@@ -192,6 +198,41 @@ final class IblockTarget
             'fields' => $row->fields,
             'properties' => $row->properties,
             'sections' => SectionPath::normalize($row->sections),
+        ];
+    }
+
+    private function rollbackSnapshot(array $snapshot, MappedRow $row): array
+    {
+        $fieldCodes = array_values(array_unique(array_merge(
+            ['ID', 'IBLOCK_ID'],
+            array_map('strtoupper', array_keys($row->fields))
+        )));
+        $propertyCodes = array_map('strtoupper', array_keys($row->properties));
+        $fields = array_intersect_key(
+            (array) ($snapshot['fields'] ?? []),
+            array_flip($fieldCodes)
+        );
+        $properties = [];
+        foreach ((array) ($snapshot['properties'] ?? []) as $code => $value) {
+            if (in_array(strtoupper((string) $code), $propertyCodes, true)) {
+                $properties[$code] = $value;
+            }
+        }
+
+        $files = array_values(array_filter(
+            (array) ($snapshot['_rollback_files'] ?? []),
+            static function (array $file) use ($fieldCodes, $propertyCodes): bool {
+                $scope = (string) ($file['scope'] ?? '');
+                $code = strtoupper((string) ($file['code'] ?? ''));
+                return ($scope === 'field' && in_array($code, $fieldCodes, true))
+                    || ($scope === 'property' && in_array($code, $propertyCodes, true));
+            }
+        ));
+
+        return [
+            'fields' => $fields,
+            'properties' => $properties,
+            '_rollback_files' => $files,
         ];
     }
 }

@@ -7,13 +7,16 @@ namespace WebEnot\ImportExcel\Import;
 use Bitrix\Main\Type\DateTime;
 use WebEnot\ImportExcel\Orm\ChangeTable;
 use WebEnot\ImportExcel\Orm\JobTable;
+use WebEnot\ImportExcel\Rollback\RollbackArchiveStorage;
 use WebEnot\ImportExcel\Support\Json;
 use WebEnot\ImportExcel\Target\IblockGatewayInterface;
 
 final class RollbackService
 {
-    public function __construct(private readonly IblockGatewayInterface $gateway)
-    {
+    public function __construct(
+        private readonly IblockGatewayInterface $gateway,
+        private readonly ?RollbackArchiveStorage $archiveStorage = null,
+    ) {
     }
 
     public function rollback(int $jobId): int
@@ -26,6 +29,9 @@ final class RollbackService
         while ($change = $changes->fetch()) {
             $before = Json::decode((string) $change['BEFORE_DATA']);
             $after = Json::decode((string) $change['AFTER_DATA']);
+            if ($this->archiveStorage !== null) {
+                $before = $this->archiveStorage->materialize($jobId, $before);
+            }
             if ($change['ACTION'] === 'added') {
                 $this->gateway->delete((int) $change['ENTITY_ID']);
             } elseif ($change['ACTION'] === 'updated') {

@@ -204,16 +204,16 @@ final class BitrixIblockGateway implements IblockGatewayInterface
                 $match = $this->findSection($iblockId, $parentId, $fields, $level);
                 if ($match) {
                     $parentId = (int) $match['ID'];
-                    if ($create) {
-                        $updates = $fields;
-                        unset($updates['ID']);
-                        $hash = hash('sha256', serialize($updates));
-                        if (
-                            $updates !== []
-                            && $this->sectionFieldsNeedUpdate($match, $updates)
-                            && ($this->updatedSectionHashes[$parentId] ?? '') !== $hash
-                        ) {
-                            $beforeSnapshots[] = $this->snapshotSection($parentId);
+                    $updates = $fields;
+                    unset($updates['ID']);
+                    $hash = hash('sha256', serialize($updates));
+                    if (
+                        $updates !== []
+                        && $this->sectionFieldsNeedUpdate($match, $updates)
+                        && ($this->updatedSectionHashes[$parentId] ?? '') !== $hash
+                    ) {
+                        $beforeSnapshots[] = $this->snapshotSection($parentId, array_keys($updates));
+                        if ($create) {
                             $this->updateSection($iblockId, $parentId, $updates);
                             $this->updatedSectionHashes[$parentId] = $hash;
                         }
@@ -311,17 +311,44 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         }
 
         $properties = [];
+        $rollbackFiles = [];
+        foreach (['PREVIEW_PICTURE', 'DETAIL_PICTURE'] as $fieldCode) {
+            $fileId = (int) ($element[$fieldCode] ?? 0);
+            if ($fileId > 0) {
+                $rollbackFiles[] = [
+                    'scope' => 'field',
+                    'code' => $fieldCode,
+                    'index' => null,
+                    'file_id' => $fileId,
+                ];
+            }
+        }
         $propertyResult = \CIBlockElement::GetProperty((int) $element['IBLOCK_ID'], $elementId, ['sort' => 'asc'], []);
         while ($property = $propertyResult->Fetch()) {
             $code = (string) ($property['CODE'] ?: $property['ID']);
             if (($property['MULTIPLE'] ?? 'N') === 'Y') {
                 $properties[$code][] = $property['VALUE'];
+                $propertyIndex = count($properties[$code]) - 1;
             } else {
                 $properties[$code] = $property['VALUE'];
+                $propertyIndex = null;
+            }
+            $fileId = (int) ($property['VALUE'] ?? 0);
+            if (($property['PROPERTY_TYPE'] ?? '') === 'F' && $fileId > 0) {
+                $rollbackFiles[] = [
+                    'scope' => 'property',
+                    'code' => $code,
+                    'index' => $propertyIndex,
+                    'file_id' => $fileId,
+                ];
             }
         }
 
-        return ['fields' => $element, 'properties' => $properties];
+        return [
+            'fields' => $element,
+            'properties' => $properties,
+            '_rollback_files' => $rollbackFiles,
+        ];
     }
 
     public function add(int $iblockId, MappedRow $row): int
@@ -476,7 +503,7 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         return $match ?: null;
     }
 
-    private function snapshotSection(int $sectionId): array
+    private function snapshotSection(int $sectionId, array $fieldCodes = []): array
     {
         $section = \CIBlockSection::GetList(
             [],
@@ -488,7 +515,25 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             throw new \RuntimeException(sprintf('IBlock section %d was not found.', $sectionId));
         }
 
-        return ['fields' => $section];
+        if ($fieldCodes !== []) {
+            $fieldCodes = array_values(array_unique(array_merge(['ID', 'IBLOCK_ID'], $fieldCodes)));
+            $section = array_intersect_key($section, array_flip($fieldCodes));
+        }
+
+        $rollbackFiles = [];
+        foreach (['PICTURE', 'DETAIL_PICTURE'] as $fieldCode) {
+            $fileId = (int) ($section[$fieldCode] ?? 0);
+            if ($fileId > 0) {
+                $rollbackFiles[] = [
+                    'scope' => 'field',
+                    'code' => $fieldCode,
+                    'index' => null,
+                    'file_id' => $fileId,
+                ];
+            }
+        }
+
+        return ['fields' => $section, '_rollback_files' => $rollbackFiles];
     }
 
     private function sectionFieldsNeedUpdate(array $current, array $updates): bool
@@ -608,6 +653,10 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             if (!SectionFieldCatalog::isPicture((string) $code)) {
                 continue;
             }
+            if ($restore && is_array($value) && isset($value['tmp_name'])) {
+                $fields[$code] = $value;
+                continue;
+            }
             if ($restore && is_numeric($value)) {
                 if ((int) $value < 1) {
                     $fields[$code] = ['del' => 'Y'];
@@ -673,6 +722,10 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         $temporaryPaths = [];
         foreach ($fields as $code => $value) {
             if (!ElementFieldCatalog::isPicture((string) $code)) {
+                continue;
+            }
+            if (is_array($value) && isset($value['tmp_name'])) {
+                $fields[$code] = $value;
                 continue;
             }
             if ($value === null || $value === '') {

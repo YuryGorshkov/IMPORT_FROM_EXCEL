@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0 - 2026-09-25
+
+- Added an explicit rollback choice before every real import; no rollback is saved without the user's decision.
+- Added a pre-import storage estimate including change snapshots and unique image/file backups.
+- Added protected physical copies of replaced Bitrix files so image rollbacks do not depend on obsolete file IDs.
+- Reduced rollback snapshots to fields and properties actually changed by the import.
+- Added rollback size and availability to the history page, with deletion of obsolete rollback data and files.
+
 ## 0.10.4 - 2026-09-25
 
 - Replaced every browser-default file input in the module with a consistent styled file picker.

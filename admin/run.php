@@ -28,7 +28,9 @@ function webenotImportExcelProcessJob(int $jobId): array
     do {
         $job = ServiceFactory::jobs()->acquire($jobId);
         $profile = ServiceFactory::profiles()->get((int) $job['PROFILE_ID']);
-        $chunk = ServiceFactory::runner()->runChunk(
+        $recordChanges = $job['MODE'] === 'dry_run'
+            || ServiceFactory::rollbackManager()->isSaved($jobId);
+        $chunk = ServiceFactory::runner($recordChanges)->runChunk(
             $profile,
             (string) $job['SOURCE_PATH'],
             (string) $job['SHEET'] ?: null,
@@ -55,6 +57,22 @@ function webenotImportExcelProcessJob(int $jobId): array
     }
 
     return $result;
+}
+
+function webenotImportExcelFormatBytes(int $bytes): string
+{
+    if ($bytes < 1024) {
+        return $bytes . ' Б';
+    }
+    $units = ['КБ', 'МБ', 'ГБ', 'ТБ'];
+    $value = $bytes / 1024;
+    foreach ($units as $unit) {
+        if ($value < 1024 || $unit === 'ТБ') {
+            return number_format($value, $value >= 10 ? 1 : 2, ',', ' ') . ' ' . $unit;
+        }
+        $value /= 1024;
+    }
+    return $bytes . ' Б';
 }
 
 function webenotImportExcelVerifiedJob(int $jobId): array
@@ -142,6 +160,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
             $shouldProcess = true;
         } elseif (isset($_POST['commit_verified'])) {
             $verified = webenotImportExcelVerifiedJob((int) ($_POST['verified_job_id'] ?? 0));
+            $saveRollback = (string) ($_POST['save_rollback'] ?? '');
+            if (!in_array($saveRollback, ['Y', 'N'], true)) {
+                throw new InvalidArgumentException((string) Loc::getMessage('WIE_RUN_ROLLBACK_CHOICE_REQUIRED'));
+            }
             $selectedProfileId = (int) $verified['PROFILE_ID'];
             $jobId = ServiceFactory::jobs()->create(
                 $selectedProfileId,
@@ -151,6 +173,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                 (int) $USER->GetID()
             );
             $shouldProcess = true;
+            if ($saveRollback === 'Y') {
+                ServiceFactory::rollbackManager()->saveFromPreview($jobId, (int) $verified['ID']);
+            } else {
+                ServiceFactory::rollbackManager()->disableForJob($jobId, (int) $verified['ID']);
+            }
         } elseif (isset($_POST['continue_job'])) {
             $jobId = (int) ($_POST['job_id'] ?? 0);
             $current = JobTable::getByPrimary($jobId)->fetch();
@@ -188,6 +215,8 @@ if ($selectedProfileId < 1 && count($profiles) === 1) {
 
 $jobProfile = null;
 $jobLogs = [];
+$rollbackEstimate = null;
+$jobRollbackState = 'none';
 if ($job) {
     $jobProfile = ProfileTable::getByPrimary((int) $job['PROFILE_ID'])->fetch() ?: null;
     if ((int) $job['ROWS_ERRORS'] > 0) {
@@ -196,6 +225,11 @@ if ($job) {
             'order' => ['ID' => 'ASC'],
             'limit' => 5,
         ])->fetchAll();
+    }
+    if ($job['MODE'] === 'dry_run' && $job['STATUS'] === JobTable::STATUS_COMPLETED) {
+        $rollbackEstimate = ServiceFactory::rollbackManager()->estimate((int) $job['ID']);
+    } elseif ($job['MODE'] === 'commit') {
+        $jobRollbackState = ServiceFactory::rollbackManager()->state((int) $job['ID']);
     }
 }
 
@@ -248,7 +282,11 @@ foreach ($errors as $error) {
                 $failed
                     ? 'WIE_RUN_FAILED_TEXT'
                     : ($complete
-                        ? ($isDryRun ? 'WIE_RUN_CHECK_COMPLETE_TEXT' : 'WIE_RUN_IMPORT_COMPLETE_TEXT')
+                        ? ($isDryRun
+                            ? 'WIE_RUN_CHECK_COMPLETE_TEXT'
+                            : ($jobRollbackState === 'saved'
+                                ? 'WIE_RUN_IMPORT_COMPLETE_TEXT'
+                                : 'WIE_RUN_IMPORT_COMPLETE_NO_ROLLBACK_TEXT'))
                         : 'WIE_RUN_IN_PROGRESS_TEXT')
             )) ?></p>
             <div class="wie-kpis">
@@ -280,9 +318,31 @@ foreach ($errors as $error) {
             <?php if ($complete && $isDryRun) : ?>
                 <div class="wie-safe"><span class="wie-safe-icon">✓</span><div><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_READY_TITLE')) ?></strong><?= htmlspecialcharsbx((string) Loc::getMessage((int) $job['ROWS_ERRORS'] > 0 ? 'WIE_RUN_READY_WITH_ERRORS_TEXT' : 'WIE_RUN_READY_TEXT')) ?></div></div>
                 <div class="wie-actions">
-                    <form method="post">
+                    <form class="wie-rollback-choice" method="post">
                         <?= bitrix_sessid_post() ?>
                         <input type="hidden" name="verified_job_id" value="<?= (int) $job['ID'] ?>">
+                        <fieldset>
+                            <legend><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_TITLE')) ?></legend>
+                            <p><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_TEXT')) ?></p>
+                            <label class="wie-rollback-option">
+                                <input type="radio" name="save_rollback" value="Y" required<?= !($rollbackEstimate['complete'] ?? true) ? ' disabled' : '' ?>>
+                                <span><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_SAVE')) ?></strong>
+                                    <?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_SIZE', [
+                                        '#SIZE#' => webenotImportExcelFormatBytes((int) ($rollbackEstimate['total_bytes'] ?? 0)),
+                                        '#FILES#' => (string) ($rollbackEstimate['file_count'] ?? 0),
+                                    ])) ?></span>
+                            </label>
+                            <label class="wie-rollback-option wie-rollback-option-warning">
+                                <input type="radio" name="save_rollback" value="N" required>
+                                <span><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_SKIP')) ?></strong>
+                                    <?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_SKIP_TEXT')) ?></span>
+                            </label>
+                            <?php if (!($rollbackEstimate['complete'] ?? true)) : ?>
+                                <div class="wie-inline-warning"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_ROLLBACK_INCOMPLETE', [
+                                    '#COUNT#' => (string) count((array) ($rollbackEstimate['missing_file_ids'] ?? [])),
+                                ])) ?></div>
+                            <?php endif; ?>
+                        </fieldset>
                         <button class="wie-primary wie-primary-large" type="submit" name="commit_verified" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_COMMIT')) ?></button>
                     </form>
                     <a class="wie-secondary" href="webenot_importexcel_profile_edit.php?ID=<?= (int) $job['PROFILE_ID'] ?>&lang=<?= urlencode(LANGUAGE_ID) ?>"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_EDIT_PROFILE')) ?></a>

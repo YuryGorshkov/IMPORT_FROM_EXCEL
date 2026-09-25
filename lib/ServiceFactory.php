@@ -16,6 +16,8 @@ use WebEnot\ImportExcel\Mapping\Transformer;
 use WebEnot\ImportExcel\Profile\ProfileRepository;
 use WebEnot\ImportExcel\Reader\SpreadsheetReader;
 use WebEnot\ImportExcel\Reporting\OrmReporter;
+use WebEnot\ImportExcel\Rollback\RollbackArchiveStorage;
+use WebEnot\ImportExcel\Rollback\RollbackManager;
 use WebEnot\ImportExcel\Security\SourceFilePolicy;
 use WebEnot\ImportExcel\Security\UploadStorage;
 use WebEnot\ImportExcel\Target\BitrixIblockGateway;
@@ -77,19 +79,31 @@ final class ServiceFactory
         return new JobManager();
     }
 
-    public static function runner(): ImportRunner
+    public static function runner(bool $recordChanges = true): ImportRunner
     {
         $gateway = new BitrixIblockGateway();
         return new ImportRunner(
             self::reader(),
             new RowMapper(new Transformer(), new MappingValidator()),
             new IblockTarget($gateway, new ElementCodeGenerator(new HeaderNormalizer())),
-            new OrmReporter()
+            new OrmReporter($recordChanges)
         );
+    }
+
+    public static function rollbackArchives(): RollbackArchiveStorage
+    {
+        return new RollbackArchiveStorage(
+            Application::getDocumentRoot() . '/upload/webenot.importexcel/rollback'
+        );
+    }
+
+    public static function rollbackManager(): RollbackManager
+    {
+        return new RollbackManager(self::rollbackArchives());
     }
 
     public static function rollback(): RollbackService
     {
-        return new RollbackService(new BitrixIblockGateway());
+        return new RollbackService(new BitrixIblockGateway(), self::rollbackArchives());
     }
 }

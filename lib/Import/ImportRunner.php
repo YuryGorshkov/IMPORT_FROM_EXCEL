@@ -50,9 +50,7 @@ final class ImportRunner
                     'updated' => $result->updated++,
                     default => $result->skipped++,
                 };
-                if (!$dryRun) {
-                    $this->reporter->change($jobId, $targetResult);
-                }
+                $this->reporter->change($jobId, $targetResult);
             } catch (\Throwable $exception) {
                 $result->errors++;
                 $this->reporter->log(

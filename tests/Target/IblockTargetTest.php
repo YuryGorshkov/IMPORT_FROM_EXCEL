@@ -58,6 +58,39 @@ final class IblockTargetTest extends TestCase
         self::assertSame('', $gateway->lastBaseCode);
     }
 
+    public function testRollbackSnapshotContainsOnlyFieldsAndPropertiesChangedByTheRow(): void
+    {
+        $gateway = new CodeCaptureGateway();
+        $gateway->existing = ['ID' => 42];
+        $gateway->snapshots[42] = [
+            'fields' => [
+                'ID' => 42,
+                'IBLOCK_ID' => 5,
+                'NAME' => 'Старое название',
+                'DETAIL_TEXT' => 'Не меняется',
+                'PREVIEW_PICTURE' => 17,
+            ],
+            'properties' => ['ARTIKUL' => 'OLD', 'COLOR' => 'Красный'],
+            '_rollback_files' => [
+                ['scope' => 'field', 'code' => 'PREVIEW_PICTURE', 'index' => null, 'file_id' => 17],
+            ],
+        ];
+        $target = $this->target($gateway);
+
+        $result = $target->apply(
+            $this->profile('none'),
+            new MappedRow(2, ['NAME' => 'Новое название'], ['ARTIKUL' => 'NEW'], []),
+            true
+        );
+
+        self::assertSame(
+            ['ID' => 42, 'IBLOCK_ID' => 5, 'NAME' => 'Старое название'],
+            $result->before['fields']
+        );
+        self::assertSame(['ARTIKUL' => 'OLD'], $result->before['properties']);
+        self::assertSame([], $result->before['_rollback_files']);
+    }
+
     public function testResolvesNestedSectionPathWithoutCreatingItDuringDryRun(): void
     {
         $gateway = new CodeCaptureGateway();

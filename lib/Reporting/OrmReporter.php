@@ -11,6 +11,10 @@ use WebEnot\ImportExcel\Target\TargetResult;
 
 final class OrmReporter implements ReporterInterface
 {
+    public function __construct(private readonly bool $recordChanges = true)
+    {
+    }
+
     public function log(int $jobId, string $level, int $rowNumber, string $code, string $message, array $context = []): void
     {
         LogTable::add([
@@ -25,7 +29,7 @@ final class OrmReporter implements ReporterInterface
 
     public function change(int $jobId, TargetResult $result): void
     {
-        if ($result->entityId < 1 || !in_array($result->action, ['added', 'updated'], true)) {
+        if (!$this->recordChanges || !in_array($result->action, ['added', 'updated'], true)) {
             return;
         }
         ChangeTable::add([
