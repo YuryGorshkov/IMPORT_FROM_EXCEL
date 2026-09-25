@@ -379,6 +379,10 @@ $iblockResult = CIBlock::GetList(['IBLOCK_TYPE_ID' => 'ASC', 'NAME' => 'ASC'], [
 while ($iblock = $iblockResult->Fetch()) {
     $iblocks[] = $iblock;
 }
+$hasSectionMapping = (bool) array_filter(
+    $form['mapping'],
+    static fn(array $rule): bool => SectionPath::isTarget((string) ($rule['target'] ?? ''))
+);
 $iblockTypes = [];
 $iblockTypeResult = CIBlockType::GetList(['SORT' => 'ASC', 'ID' => 'ASC']);
 while ($iblockType = $iblockTypeResult->Fetch()) {
@@ -448,15 +452,28 @@ foreach ($errors as $error) {
                             <?php foreach ($iblocks as $iblock) :
                                 $iblockId = (int) $iblock['ID'];
                                 $iblockLabel = (string) $iblock['NAME'] . ' · ' . (string) $iblock['IBLOCK_TYPE_ID'] . ' · #' . $iblockId;
+                                $supportsNestedUrl = str_contains(
+                                    (string) ($iblock['SECTION_PAGE_URL'] ?? ''),
+                                    '#SECTION_CODE_PATH#'
+                                ) && str_contains(
+                                    (string) ($iblock['DETAIL_PAGE_URL'] ?? ''),
+                                    '#SECTION_CODE_PATH#'
+                                );
                                 if (($iblock['ACTIVE'] ?? 'Y') !== 'Y') {
                                     $iblockLabel .= ' · ' . (string) Loc::getMessage('WIE_PROFILE_TARGET_INACTIVE');
                                 }
                                 ?>
-                                <option value="<?= $iblockId ?>"<?= $form['target_id'] === $iblockId ? ' selected' : '' ?>><?= htmlspecialcharsbx($iblockLabel) ?></option>
+                                <option value="<?= $iblockId ?>" data-nested-url="<?= $supportsNestedUrl ? 'Y' : 'N' ?>"<?= $form['target_id'] === $iblockId ? ' selected' : '' ?>><?= htmlspecialcharsbx($iblockLabel) ?></option>
                             <?php endforeach; ?>
                         </select>
                         <button id="wie-create-target" class="wie-secondary wie-button-nowrap" type="button"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_CREATE')) ?></button>
                     </div>
+                    <?php if ($hasSectionMapping) : ?>
+                        <div class="wie-url-warning" data-url-warning hidden>
+                            <strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_URL_WARNING_TITLE')) ?></strong>
+                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_TARGET_URL_WARNING_TEXT')) ?></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <div id="wie-new-target" class="wie-field wie-field-wide wie-new-target"<?= $targetMode === 'new' ? '' : ' hidden' ?>>
                     <div class="wie-new-target-head">
@@ -733,6 +750,8 @@ foreach ($errors as $error) {
     var badge = document.getElementById('wie-selected-row');
     var startRow = document.getElementById('wie-start-row');
     var targetMode = document.getElementById('wie-target-mode');
+    var targetSelect = document.getElementById('wie-target');
+    var urlWarning = document.querySelector('[data-url-warning]');
     var newTarget = document.getElementById('wie-new-target');
     var createTarget = document.getElementById('wie-create-target');
     var cancelTarget = document.getElementById('wie-cancel-target');
@@ -748,6 +767,14 @@ foreach ($errors as $error) {
             newTarget.hidden = true;
             document.getElementById('wie-target').focus();
         });
+    }
+    if (targetSelect && urlWarning) {
+        var refreshUrlWarning = function () {
+            var option = targetSelect.options[targetSelect.selectedIndex];
+            urlWarning.hidden = !option || option.value === '' || option.getAttribute('data-nested-url') === 'Y';
+        };
+        targetSelect.addEventListener('change', refreshUrlWarning);
+        refreshUrlWarning();
     }
     Array.prototype.forEach.call(mappingDestinations, function (destinationSelect) {
         var control = destinationSelect.closest('.wie-code-control');

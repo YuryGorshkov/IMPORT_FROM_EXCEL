@@ -56,6 +56,8 @@ final class ColumnDiscoveryService
             $usedCodes[$code] = true;
             $systemField = self::SYSTEM_FIELDS[$baseCode] ?? null;
             $sectionLevel = SectionPath::levelFromHeaderCode($baseCode);
+            $isCustomProperty = $sectionLevel === null && $systemField === null;
+            $isImageProperty = $isCustomProperty && $this->isImageHeader($baseCode);
             $columns[] = [
                 'column' => $column,
                 'label' => $label,
@@ -65,8 +67,11 @@ final class ColumnDiscoveryService
                     : ($systemField !== null ? 'FIELD:' . $systemField : 'PROPERTY:' . $code),
                 'required' => $systemField === 'NAME',
                 'transforms' => [['type' => 'trim']],
-            ] + ($sectionLevel === null && $systemField === null
-                ? ['property_type' => 'S', 'multiple' => false]
+            ] + ($isCustomProperty
+                ? [
+                    'property_type' => $isImageProperty ? 'F' : 'S',
+                    'multiple' => $isImageProperty && $this->isGalleryHeader($baseCode),
+                ]
                 : []);
         }
 
@@ -74,5 +79,15 @@ final class ColumnDiscoveryService
             throw new \RuntimeException(sprintf('Header row %d does not contain named columns.', $headerRow));
         }
         return $columns;
+    }
+
+    private function isImageHeader(string $code): bool
+    {
+        return preg_match('/(?:^|_)(?:KARTINK|IZOBRAZH|FOTO|PHOTO|IMAGE|PICTURE|GALERE)(?:[A-Z]*)(?:_|$)/', $code) === 1;
+    }
+
+    private function isGalleryHeader(string $code): bool
+    {
+        return preg_match('/(?:GALERE|GALLERY|MORE_PHOTO|FOTOGALERE)/', $code) === 1;
     }
 }

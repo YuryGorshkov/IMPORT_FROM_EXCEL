@@ -22,8 +22,8 @@ final class ColumnDiscoveryServiceTest extends TestCase
         $book = new Spreadsheet();
         $sheet = $book->getActiveSheet();
         $sheet->fromArray([
-            ['Название', 'Раздел 1-го уровня', 'Раздел 2-го уровня', 'Мощность двигателя', 'Мощность двигателя'],
-            ['ДГУ 100', 'Генераторы', 'Дизельные генераторы', 100, 110],
+            ['Название', 'Раздел 1-го уровня', 'Раздел 2-го уровня', 'Мощность двигателя', 'Мощность двигателя', 'Картинка 1', 'Галерея фото'],
+            ['ДГУ 100', 'Генераторы', 'Дизельные генераторы', 100, 110, 'https://example.test/one.jpg', 'https://example.test/two.jpg'],
         ]);
         (new Xlsx($book))->save($this->file);
         $book->disconnectWorksheets();
@@ -46,5 +46,9 @@ final class ColumnDiscoveryServiceTest extends TestCase
         self::assertSame('PROPERTY:MOSHCHNOST_DVIGATELYA', $mapping[3]['target']);
         self::assertSame('PROPERTY:MOSHCHNOST_DVIGATELYA_2', $mapping[4]['target']);
         self::assertSame('Мощность двигателя', $mapping[3]['label']);
+        self::assertSame('F', $mapping[5]['property_type']);
+        self::assertFalse($mapping[5]['multiple']);
+        self::assertSame('F', $mapping[6]['property_type']);
+        self::assertTrue($mapping[6]['multiple']);
     }
 }

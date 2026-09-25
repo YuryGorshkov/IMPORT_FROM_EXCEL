@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-09-25
+
+- Added automatic file-property suggestions for headers such as «Фото», «Картинка», «Изображение» and galleries.
+- Added a warning when an existing IBlock uses URL templates without `#SECTION_CODE_PATH#`; existing site routes are never rewritten automatically.
+
 ## 0.7.0 - 2026-09-25
 
 - Added a visible property type selector for ordinary values and image/file properties.
