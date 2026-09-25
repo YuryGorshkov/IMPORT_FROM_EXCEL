@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 - 2026-09-25
+
+- Replaced internal mapping identifiers such as `PROPERTY:ARTIKUL` with the documented Bitrix PHP array notation in the administration UI.
+- Distinguished write targets (`$arFields["PROPERTY_VALUES"]["ARTIKUL"]`) from lookup filters (`$arFilter["PROPERTY_ARTIKUL"]`).
+- Kept the stored profile format unchanged for full backward compatibility.
+
 ## 0.8.0 - 2026-09-25
 
 - Replaced the crowded mapping controls with one grouped destination selector per Excel column.
