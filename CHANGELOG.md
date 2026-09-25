@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0 - 2026-09-25
+
+- Added a dedicated Bitrix-style settings window for every newly created IBlock property.
+- Prefilled the property name from the Excel header and its editable symbolic code from automatic transliteration.
+- Added the standard property type, activity, sorting, multiplicity, required, search, filter, hint, input-size, smart-filter and display settings.
+- Added label-to-enum resolution for list properties; values of a newly created list property are added from imported cell text when needed.
+- Kept existing properties and built-in element or section fields free of irrelevant generated codes in the mapping table.
+- Passed new-property settings to `CIBlockProperty::Add`, including list/detail page feature flags and section property settings.
+
 ## 0.9.0 - 2026-09-25
 
 - Split the mapping destination and the transliterated Excel header into separate columns.

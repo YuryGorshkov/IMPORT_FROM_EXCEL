@@ -62,6 +62,7 @@ final class RowMapper
                 $propertyDefinitions[$name] = [
                     'property_type' => strtoupper((string) ($rule['property_type'] ?? 'S')),
                     'multiple' => (bool) ($rule['multiple'] ?? false),
+                    'create_if_missing' => (bool) ($rule['create_if_missing'] ?? true),
                 ];
             } elseif ($scope === 'SECTION') {
                 $sections[$sectionTarget['level']][$sectionTarget['field']] = $value;

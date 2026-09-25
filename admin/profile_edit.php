@@ -45,7 +45,9 @@ function webenotImportExcelMappingFromRequest(array $rows): array
         if ($choice !== '') {
             $decodedChoice = MappingChoice::decode(
                 $choice,
-                (string) ($row['property_code'] ?? '')
+                (string) ($row['property_code'] ?? ''),
+                (string) ($row['property_type'] ?? 'S'),
+                ($row['property_multiple'] ?? 'N') === 'Y'
             );
             $destination = $decodedChoice['target'];
             $targetCode = $decodedChoice['code'];
@@ -87,6 +89,45 @@ function webenotImportExcelMappingFromRequest(array $rows): array
                 $rule['property_type'] = $decodedChoice['property_type'];
                 $rule['multiple'] = $decodedChoice['multiple'];
                 $rule['create_if_missing'] = $decodedChoice['create_if_missing'];
+                if ($decodedChoice['create_if_missing']) {
+                    $propertyName = trim((string) ($row['property_name'] ?? ''));
+                    if ($propertyName === '') {
+                        throw new InvalidArgumentException(
+                            (string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_NAME_REQUIRED')
+                        );
+                    }
+                    if (mb_strlen($propertyName) > 100) {
+                        throw new InvalidArgumentException(
+                            (string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_NAME_TOO_LONG')
+                        );
+                    }
+                    $rule['property_name'] = $propertyName;
+                    $rule['property_active'] = ($row['property_active'] ?? 'N') === 'Y';
+                    $rule['property_sort'] = max(0, (int) ($row['property_sort'] ?? 500));
+                    $rule['property_is_required'] = ($row['property_is_required'] ?? 'N') === 'Y';
+                    $rule['property_searchable'] = ($row['property_searchable'] ?? 'N') === 'Y';
+                    $rule['property_filtrable'] = ($row['property_filtrable'] ?? 'N') === 'Y';
+                    $rule['property_smart_filter'] = ($row['property_smart_filter'] ?? 'N') === 'Y';
+                    $rule['property_with_description'] = ($row['property_with_description'] ?? 'N') === 'Y';
+                    $rule['property_multiple_count'] = max(1, (int) ($row['property_multiple_count'] ?? 5));
+                    $rule['property_hint'] = trim((string) ($row['property_hint'] ?? ''));
+                    $rule['property_show_edit'] = ($row['property_show_edit'] ?? 'N') === 'Y';
+                    $displayType = strtoupper(trim((string) ($row['property_display_type'] ?? 'F')));
+                    $rule['property_display_type'] = in_array($displayType, ['F', 'K', 'P'], true)
+                        ? $displayType
+                        : 'F';
+                    $rule['property_display_expanded'] = ($row['property_display_expanded'] ?? 'N') === 'Y';
+                    $rule['property_filter_hint'] = trim((string) ($row['property_filter_hint'] ?? ''));
+                    $rule['property_row_count'] = max(1, (int) ($row['property_row_count'] ?? 1));
+                    $rule['property_col_count'] = max(1, (int) ($row['property_col_count'] ?? 30));
+                    $rule['property_default_value'] = (string) ($row['property_default_value'] ?? '');
+                    $rule['property_show_list'] = ($row['property_show_list'] ?? 'N') === 'Y';
+                    $rule['property_show_detail'] = ($row['property_show_detail'] ?? 'N') === 'Y';
+                    $rule['property_link_iblock_id'] = max(
+                        0,
+                        (int) ($row['property_link_iblock_id'] ?? 0)
+                    );
+                }
             } else {
                 $propertyType = strtoupper(trim((string) ($row['property_type'] ?? 'S')));
                 $rule['property_type'] = in_array($propertyType, ['S', 'F'], true) ? $propertyType : 'S';
@@ -595,6 +636,114 @@ foreach ($errors as $error) {
             </div>
         </section>
 
+        <div id="wie-property-dialog" class="wie-modal" hidden aria-hidden="true">
+            <div class="wie-modal-backdrop" data-property-dialog-cancel></div>
+            <div class="wie-modal-window" role="dialog" aria-modal="true" aria-labelledby="wie-property-dialog-title">
+                <div class="wie-modal-head">
+                    <div>
+                        <h2 id="wie-property-dialog-title"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_TITLE')) ?></h2>
+                        <p id="wie-property-dialog-source"></p>
+                    </div>
+                    <button class="wie-modal-close" type="button" data-property-dialog-cancel aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CANCEL')) ?>">×</button>
+                </div>
+                <div class="wie-modal-body">
+                    <div id="wie-property-dialog-error" class="wie-property-error" hidden></div>
+                    <div class="wie-grid">
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-property-type"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_TYPE')) ?></label>
+                            <select id="wie-property-type">
+                                <option value="S"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PROPERTY_TYPE_STRING')) ?></option>
+                                <option value="N"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PROPERTY_TYPE_NUMBER')) ?></option>
+                                <option value="L"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PROPERTY_TYPE_LIST')) ?></option>
+                                <option value="F"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PROPERTY_TYPE_FILE')) ?></option>
+                                <option value="E"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PROPERTY_TYPE_ELEMENT')) ?></option>
+                                <option value="G"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PROPERTY_TYPE_SECTION')) ?></option>
+                            </select>
+                        </div>
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-property-sort"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SORT')) ?></label>
+                            <input id="wie-property-sort" type="number" min="0" value="500">
+                        </div>
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-property-name"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_NAME')) ?></label>
+                            <input id="wie-property-name" type="text" maxlength="100">
+                        </div>
+                        <div class="wie-field">
+                            <label class="wie-label" for="wie-property-code"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CODE')) ?></label>
+                            <input id="wie-property-code" class="wie-property-code-edit" type="text" maxlength="50" autocomplete="off">
+                            <p class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CODE_NOTE')) ?></p>
+                        </div>
+                        <div id="wie-property-link-wrap" class="wie-field wie-field-wide" hidden>
+                            <label class="wie-label" for="wie-property-link-iblock"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_LINK_IBLOCK')) ?></label>
+                            <select id="wie-property-link-iblock">
+                                <option value="0"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_LINK_CURRENT')) ?></option>
+                                <?php foreach ($iblocks as $iblock) : ?>
+                                    <option value="<?= (int) $iblock['ID'] ?>"><?= htmlspecialcharsbx((string) $iblock['NAME'] . ' · ID ' . (int) $iblock['ID']) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="wie-field wie-field-wide">
+                            <label class="wie-label" for="wie-property-hint"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_HINT')) ?></label>
+                            <input id="wie-property-hint" type="text" maxlength="255">
+                        </div>
+                    </div>
+                    <div class="wie-property-flags">
+                        <label><input id="wie-property-active" type="checkbox" checked> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_ACTIVE')) ?></span></label>
+                        <label><input id="wie-property-multiple" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_MULTIPLE')) ?></span></label>
+                        <label><input id="wie-property-is-required" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_IS_REQUIRED')) ?></span></label>
+                        <label><input id="wie-property-searchable" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SEARCHABLE')) ?></span></label>
+                        <label><input id="wie-property-filtrable" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_FILTRABLE')) ?></span></label>
+                        <label><input id="wie-property-with-description" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_WITH_DESCRIPTION')) ?></span></label>
+                        <label><input id="wie-property-show-edit" type="checkbox" checked> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SHOW_EDIT')) ?></span></label>
+                    </div>
+                    <p class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_REQUIRED_NOTE')) ?></p>
+                    <details class="wie-property-advanced">
+                        <summary><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_ADVANCED')) ?></summary>
+                        <div class="wie-grid">
+                            <div class="wie-field">
+                                <label class="wie-label" for="wie-property-multiple-count"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_MULTIPLE_COUNT')) ?></label>
+                                <input id="wie-property-multiple-count" type="number" min="1" value="5">
+                            </div>
+                            <div class="wie-field">
+                                <label class="wie-label" for="wie-property-default-value"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_DEFAULT_VALUE')) ?></label>
+                                <input id="wie-property-default-value" type="text">
+                            </div>
+                            <div class="wie-field">
+                                <label class="wie-label"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_FIELD_SIZE')) ?></label>
+                                <div class="wie-property-size">
+                                    <input id="wie-property-row-count" type="number" min="1" value="1" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_ROWS')) ?>">
+                                    <span>×</span>
+                                    <input id="wie-property-col-count" type="number" min="1" value="30" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_COLUMNS')) ?>">
+                                </div>
+                            </div>
+                            <div class="wie-field wie-property-smart-settings">
+                                <label class="wie-label" for="wie-property-display-type"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_DISPLAY_TYPE')) ?></label>
+                                <select id="wie-property-display-type">
+                                    <option value="F"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_DISPLAY_CHECKBOXES')) ?></option>
+                                    <option value="K"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_DISPLAY_RADIO')) ?></option>
+                                    <option value="P"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_DISPLAY_SELECT')) ?></option>
+                                </select>
+                            </div>
+                            <div class="wie-field wie-field-wide wie-property-smart-settings">
+                                <label class="wie-label" for="wie-property-filter-hint"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_FILTER_HINT')) ?></label>
+                                <textarea id="wie-property-filter-hint" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="wie-property-flags">
+                            <label><input id="wie-property-smart-filter" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SMART_FILTER')) ?></span></label>
+                            <label class="wie-property-smart-settings"><input id="wie-property-display-expanded" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_DISPLAY_EXPANDED')) ?></span></label>
+                            <label><input id="wie-property-show-list" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SHOW_LIST')) ?></span></label>
+                            <label><input id="wie-property-show-detail" type="checkbox"> <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SHOW_DETAIL')) ?></span></label>
+                        </div>
+                    </details>
+                </div>
+                <div class="wie-modal-actions">
+                    <button id="wie-property-dialog-save" class="wie-primary" type="button"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SAVE')) ?></button>
+                    <button class="wie-secondary" type="button" data-property-dialog-cancel><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CANCEL')) ?></button>
+                </div>
+            </div>
+        </div>
+
         <section class="wie-section">
             <h2><span class="wie-section-number">1.</span> <?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SECTION_DISCOVERY')) ?></h2>
             <p class="wie-section-hint"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SECTION_DISCOVERY_TEXT')) ?></p>
@@ -708,6 +857,17 @@ foreach ($errors as $error) {
                                     $choice = (string) $selectedIblockProperties[$existingPropertyCode]['value'];
                                 }
                             }
+                            $isNewProperty = $choice === MappingChoice::PROPERTY_NEW;
+                            $newPropertyCode = $isNewProperty && str_starts_with($ruleTarget, 'PROPERTY:')
+                                ? substr($ruleTarget, 9)
+                                : $sourceCode;
+                            $newPropertyName = trim((string) ($rule['property_name'] ?? $rule['label'] ?? ''));
+                            $newPropertyType = strtoupper((string) ($rule['property_type'] ?? 'S'));
+                            if (!in_array($newPropertyType, ['S', 'N', 'L', 'F', 'E', 'G'], true)) {
+                                $newPropertyType = 'S';
+                            }
+                            $newPropertyActive = !array_key_exists('property_active', $rule)
+                                || (bool) $rule['property_active'];
                             $transformsJson = json_encode($rule['transforms'] ?? [['type' => 'trim']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                             $defaultJson = array_key_exists('default', $rule)
                                 ? json_encode($rule['default'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
@@ -725,10 +885,7 @@ foreach ($errors as $error) {
                                             <?php endforeach; ?>
                                         </optgroup>
                                         <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_NEW_PROPERTIES')) ?>">
-                                            <option value="<?= MappingChoice::PROPERTY_VALUE ?>"<?= $choice === MappingChoice::PROPERTY_VALUE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE')) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE_MULTIPLE')) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_FILE ?>"<?= $choice === MappingChoice::PROPERTY_FILE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE')) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_FILE_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_FILE_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE_MULTIPLE')) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_NEW ?>"<?= $isNewProperty ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_NEW')) ?></option>
                                         </optgroup>
                                         <?php foreach ($elementFieldGroups as $groupMessage => $fieldCodes) : ?>
                                             <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage($groupMessage)) ?>">
@@ -750,7 +907,36 @@ foreach ($errors as $error) {
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][transforms_json]" value="<?= htmlspecialcharsbx((string) $transformsJson) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][default_json]" value="<?= htmlspecialcharsbx((string) $defaultJson) ?>">
                                 </td>
-                                <td class="wie-col-code"><input class="wie-source-code" type="text" readonly name="mapping_rows[<?= (int) $index ?>][property_code]" value="<?= htmlspecialcharsbx($sourceCode) ?>" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SOURCE_CODE')) ?>"></td>
+                                <td class="wie-col-code" data-source-code="<?= htmlspecialcharsbx($sourceCode) ?>">
+                                    <button class="wie-property-settings" type="button"<?= $isNewProperty ? '' : ' hidden' ?>>
+                                        <strong class="wie-property-settings-code"><?= htmlspecialcharsbx($newPropertyCode) ?></strong>
+                                        <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CONFIGURE')) ?></span>
+                                    </button>
+                                    <span class="wie-property-not-used"<?= $isNewProperty ? ' hidden' : '' ?>>—</span>
+                                    <input type="hidden" data-property-setting="code" name="mapping_rows[<?= (int) $index ?>][property_code]" value="<?= htmlspecialcharsbx($newPropertyCode) ?>">
+                                    <input type="hidden" data-property-setting="name" name="mapping_rows[<?= (int) $index ?>][property_name]" value="<?= htmlspecialcharsbx($newPropertyName) ?>">
+                                    <input type="hidden" data-property-setting="type" name="mapping_rows[<?= (int) $index ?>][property_type]" value="<?= htmlspecialcharsbx($newPropertyType) ?>">
+                                    <input type="hidden" data-property-setting="active" name="mapping_rows[<?= (int) $index ?>][property_active]" value="<?= $newPropertyActive ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="sort" name="mapping_rows[<?= (int) $index ?>][property_sort]" value="<?= (int) ($rule['property_sort'] ?? 500) ?>">
+                                    <input type="hidden" data-property-setting="multiple" name="mapping_rows[<?= (int) $index ?>][property_multiple]" value="<?= !empty($rule['multiple']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="is_required" name="mapping_rows[<?= (int) $index ?>][property_is_required]" value="<?= !empty($rule['property_is_required']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="searchable" name="mapping_rows[<?= (int) $index ?>][property_searchable]" value="<?= !empty($rule['property_searchable']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="filtrable" name="mapping_rows[<?= (int) $index ?>][property_filtrable]" value="<?= !empty($rule['property_filtrable']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="smart_filter" name="mapping_rows[<?= (int) $index ?>][property_smart_filter]" value="<?= !empty($rule['property_smart_filter']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="with_description" name="mapping_rows[<?= (int) $index ?>][property_with_description]" value="<?= !empty($rule['property_with_description']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="multiple_count" name="mapping_rows[<?= (int) $index ?>][property_multiple_count]" value="<?= max(1, (int) ($rule['property_multiple_count'] ?? 5)) ?>">
+                                    <input type="hidden" data-property-setting="hint" name="mapping_rows[<?= (int) $index ?>][property_hint]" value="<?= htmlspecialcharsbx((string) ($rule['property_hint'] ?? '')) ?>">
+                                    <input type="hidden" data-property-setting="show_edit" name="mapping_rows[<?= (int) $index ?>][property_show_edit]" value="<?= !array_key_exists('property_show_edit', $rule) || !empty($rule['property_show_edit']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="display_type" name="mapping_rows[<?= (int) $index ?>][property_display_type]" value="<?= htmlspecialcharsbx((string) ($rule['property_display_type'] ?? 'F')) ?>">
+                                    <input type="hidden" data-property-setting="display_expanded" name="mapping_rows[<?= (int) $index ?>][property_display_expanded]" value="<?= !empty($rule['property_display_expanded']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="filter_hint" name="mapping_rows[<?= (int) $index ?>][property_filter_hint]" value="<?= htmlspecialcharsbx((string) ($rule['property_filter_hint'] ?? '')) ?>">
+                                    <input type="hidden" data-property-setting="row_count" name="mapping_rows[<?= (int) $index ?>][property_row_count]" value="<?= max(1, (int) ($rule['property_row_count'] ?? 1)) ?>">
+                                    <input type="hidden" data-property-setting="col_count" name="mapping_rows[<?= (int) $index ?>][property_col_count]" value="<?= max(1, (int) ($rule['property_col_count'] ?? 30)) ?>">
+                                    <input type="hidden" data-property-setting="default_value" name="mapping_rows[<?= (int) $index ?>][property_default_value]" value="<?= htmlspecialcharsbx((string) ($rule['property_default_value'] ?? '')) ?>">
+                                    <input type="hidden" data-property-setting="show_list" name="mapping_rows[<?= (int) $index ?>][property_show_list]" value="<?= !empty($rule['property_show_list']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="show_detail" name="mapping_rows[<?= (int) $index ?>][property_show_detail]" value="<?= !empty($rule['property_show_detail']) ? 'Y' : 'N' ?>">
+                                    <input type="hidden" data-property-setting="link_iblock_id" name="mapping_rows[<?= (int) $index ?>][property_link_iblock_id]" value="<?= (int) ($rule['property_link_iblock_id'] ?? 0) ?>">
+                                </td>
                                 <td class="wie-col-required"><input type="checkbox" name="mapping_rows[<?= (int) $index ?>][required]" value="Y"<?= !empty($rule['required']) ? ' checked' : '' ?> aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_REQUIRED')) ?>"></td>
                             </tr>
                         <?php endforeach; ?>
@@ -845,6 +1031,224 @@ foreach ($errors as $error) {
     var cancelTarget = document.getElementById('wie-cancel-target');
     var propertyOptionsByIblock = <?= $iblockPropertyOptionsJson ?: '{}' ?>;
     var mappingChoices = document.querySelectorAll('.wie-mapping-choice');
+    var propertyDialog = document.getElementById('wie-property-dialog');
+    var propertyDialogSource = document.getElementById('wie-property-dialog-source');
+    var propertyDialogError = document.getElementById('wie-property-dialog-error');
+    var propertyDialogSave = document.getElementById('wie-property-dialog-save');
+    var propertyType = document.getElementById('wie-property-type');
+    var propertyName = document.getElementById('wie-property-name');
+    var propertyCode = document.getElementById('wie-property-code');
+    var propertySort = document.getElementById('wie-property-sort');
+    var propertyLinkIblock = document.getElementById('wie-property-link-iblock');
+    var propertyLinkWrap = document.getElementById('wie-property-link-wrap');
+    var propertyHint = document.getElementById('wie-property-hint');
+    var propertyActive = document.getElementById('wie-property-active');
+    var propertyMultiple = document.getElementById('wie-property-multiple');
+    var propertyIsRequired = document.getElementById('wie-property-is-required');
+    var propertySearchable = document.getElementById('wie-property-searchable');
+    var propertyFiltrable = document.getElementById('wie-property-filtrable');
+    var propertyWithDescription = document.getElementById('wie-property-with-description');
+    var propertyMultipleCount = document.getElementById('wie-property-multiple-count');
+    var propertyShowEdit = document.getElementById('wie-property-show-edit');
+    var propertySmartFilter = document.getElementById('wie-property-smart-filter');
+    var propertyDisplayType = document.getElementById('wie-property-display-type');
+    var propertyDisplayExpanded = document.getElementById('wie-property-display-expanded');
+    var propertyFilterHint = document.getElementById('wie-property-filter-hint');
+    var propertyRowCount = document.getElementById('wie-property-row-count');
+    var propertyColCount = document.getElementById('wie-property-col-count');
+    var propertyDefaultValue = document.getElementById('wie-property-default-value');
+    var propertyShowList = document.getElementById('wie-property-show-list');
+    var propertyShowDetail = document.getElementById('wie-property-show-detail');
+    var activeMappingSelect = null;
+    var previousMappingChoice = '';
+    var newPropertyChoice = '<?= MappingChoice::PROPERTY_NEW ?>';
+    var getPropertySetting = function (row, key) {
+        return row.querySelector('[data-property-setting="' + key + '"]');
+    };
+    var readPropertySetting = function (row, key, fallback) {
+        var input = getPropertySetting(row, key);
+        return input && input.value !== '' ? input.value : fallback;
+    };
+    var writePropertySetting = function (row, key, value) {
+        var input = getPropertySetting(row, key);
+        if (input) {
+            input.value = value;
+        }
+    };
+    var refreshPropertyPresentation = function (select) {
+        var row = select.closest('tr');
+        if (!row) {
+            return;
+        }
+        var isNewProperty = select.value === newPropertyChoice;
+        var button = row.querySelector('.wie-property-settings');
+        var empty = row.querySelector('.wie-property-not-used');
+        if (button) {
+            button.hidden = !isNewProperty;
+            var code = button.querySelector('.wie-property-settings-code');
+            if (code) {
+                code.textContent = readPropertySetting(row, 'code', row.querySelector('.wie-col-code').getAttribute('data-source-code') || '');
+            }
+        }
+        if (empty) {
+            empty.hidden = isNewProperty;
+        }
+    };
+    var syncPropertyTypeControls = function () {
+        if (!propertyType) {
+            return;
+        }
+        var type = propertyType.value;
+        propertyLinkWrap.hidden = type !== 'E' && type !== 'G';
+        var supportsDescription = type === 'S' || type === 'N' || type === 'F';
+        propertyWithDescription.disabled = !supportsDescription;
+        if (!supportsDescription) {
+            propertyWithDescription.checked = false;
+        }
+        var supportsSmartFilter = type !== 'F';
+        propertySmartFilter.disabled = !supportsSmartFilter;
+        if (!supportsSmartFilter) {
+            propertySmartFilter.checked = false;
+        }
+        Array.prototype.forEach.call(document.querySelectorAll('.wie-property-smart-settings'), function (field) {
+            field.hidden = !supportsSmartFilter;
+        });
+    };
+    var closePropertyDialog = function (restoreChoice) {
+        if (!propertyDialog) {
+            return;
+        }
+        if (restoreChoice && activeMappingSelect && previousMappingChoice !== newPropertyChoice) {
+            activeMappingSelect.value = previousMappingChoice;
+            activeMappingSelect.setAttribute('data-last-choice', previousMappingChoice);
+            refreshPropertyPresentation(activeMappingSelect);
+        }
+        propertyDialog.hidden = true;
+        propertyDialog.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('wie-modal-open');
+        activeMappingSelect = null;
+    };
+    var openPropertyDialog = function (select, oldChoice) {
+        var row = select.closest('tr');
+        if (!propertyDialog || !row) {
+            return;
+        }
+        activeMappingSelect = select;
+        previousMappingChoice = oldChoice || select.getAttribute('data-last-choice') || '';
+        var label = row.querySelector('.wie-source-label');
+        propertyDialogSource.textContent = '<?= CUtil::JSEscape((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_SOURCE')) ?>'.replace('#NAME#', label ? label.textContent : '');
+        propertyType.value = readPropertySetting(row, 'type', 'S');
+        propertyName.value = readPropertySetting(row, 'name', label ? label.textContent : '');
+        propertyCode.value = readPropertySetting(row, 'code', row.querySelector('.wie-col-code').getAttribute('data-source-code') || '');
+        propertySort.value = readPropertySetting(row, 'sort', '500');
+        propertyLinkIblock.value = readPropertySetting(row, 'link_iblock_id', '0');
+        propertyHint.value = readPropertySetting(row, 'hint', '');
+        propertyActive.checked = readPropertySetting(row, 'active', 'Y') === 'Y';
+        propertyMultiple.checked = readPropertySetting(row, 'multiple', 'N') === 'Y';
+        propertyIsRequired.checked = readPropertySetting(row, 'is_required', 'N') === 'Y';
+        propertySearchable.checked = readPropertySetting(row, 'searchable', 'N') === 'Y';
+        propertyFiltrable.checked = readPropertySetting(row, 'filtrable', 'N') === 'Y';
+        propertyWithDescription.checked = readPropertySetting(row, 'with_description', 'N') === 'Y';
+        propertyMultipleCount.value = readPropertySetting(row, 'multiple_count', '5');
+        propertyShowEdit.checked = readPropertySetting(row, 'show_edit', 'Y') === 'Y';
+        propertySmartFilter.checked = readPropertySetting(row, 'smart_filter', 'N') === 'Y';
+        propertyDisplayType.value = readPropertySetting(row, 'display_type', 'F');
+        propertyDisplayExpanded.checked = readPropertySetting(row, 'display_expanded', 'N') === 'Y';
+        propertyFilterHint.value = readPropertySetting(row, 'filter_hint', '');
+        propertyRowCount.value = readPropertySetting(row, 'row_count', '1');
+        propertyColCount.value = readPropertySetting(row, 'col_count', '30');
+        propertyDefaultValue.value = readPropertySetting(row, 'default_value', '');
+        propertyShowList.checked = readPropertySetting(row, 'show_list', 'N') === 'Y';
+        propertyShowDetail.checked = readPropertySetting(row, 'show_detail', 'N') === 'Y';
+        propertyDialogError.hidden = true;
+        propertyDialogError.textContent = '';
+        syncPropertyTypeControls();
+        propertyDialog.hidden = false;
+        propertyDialog.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('wie-modal-open');
+        propertyName.focus();
+    };
+    if (propertyType) {
+        propertyType.addEventListener('change', syncPropertyTypeControls);
+    }
+    if (propertySmartFilter) {
+        propertySmartFilter.addEventListener('change', syncPropertyTypeControls);
+    }
+    if (propertyCode) {
+        propertyCode.addEventListener('input', function () {
+            propertyCode.value = propertyCode.value.toUpperCase();
+        });
+    }
+    if (propertyDialogSave) {
+        propertyDialogSave.addEventListener('click', function () {
+            if (!activeMappingSelect) {
+                return;
+            }
+            var row = activeMappingSelect.closest('tr');
+            var name = propertyName.value.trim();
+            var code = propertyCode.value.trim().toUpperCase();
+            if (name === '') {
+                propertyDialogError.textContent = '<?= CUtil::JSEscape((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_NAME_REQUIRED')) ?>';
+                propertyDialogError.hidden = false;
+                propertyName.focus();
+                return;
+            }
+            if (!/^[A-Z][A-Z0-9_]*$/.test(code)) {
+                propertyDialogError.textContent = '<?= CUtil::JSEscape((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CODE_INVALID')) ?>';
+                propertyDialogError.hidden = false;
+                propertyCode.focus();
+                return;
+            }
+            var iblockId = targetSelect && (!targetMode || targetMode.value !== 'new')
+                ? targetSelect.value
+                : '';
+            var duplicate = (propertyOptionsByIblock[iblockId] || []).some(function (property) {
+                return property.code === code;
+            });
+            if (duplicate) {
+                propertyDialogError.textContent = '<?= CUtil::JSEscape((string) Loc::getMessage('WIE_PROFILE_NEW_PROPERTY_CODE_EXISTS')) ?>'.replace('#CODE#', code);
+                propertyDialogError.hidden = false;
+                propertyCode.focus();
+                return;
+            }
+            writePropertySetting(row, 'name', name);
+            writePropertySetting(row, 'code', code);
+            writePropertySetting(row, 'type', propertyType.value);
+            writePropertySetting(row, 'sort', String(Math.max(0, parseInt(propertySort.value, 10) || 0)));
+            writePropertySetting(row, 'link_iblock_id', propertyLinkIblock.value || '0');
+            writePropertySetting(row, 'hint', propertyHint.value.trim());
+            writePropertySetting(row, 'active', propertyActive.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'multiple', propertyMultiple.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'is_required', propertyIsRequired.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'searchable', propertySearchable.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'filtrable', propertyFiltrable.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'with_description', propertyWithDescription.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'multiple_count', String(Math.max(1, parseInt(propertyMultipleCount.value, 10) || 5)));
+            writePropertySetting(row, 'show_edit', propertyShowEdit.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'smart_filter', propertySmartFilter.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'display_type', propertyDisplayType.value);
+            writePropertySetting(row, 'display_expanded', propertyDisplayExpanded.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'filter_hint', propertyFilterHint.value.trim());
+            writePropertySetting(row, 'row_count', String(Math.max(1, parseInt(propertyRowCount.value, 10) || 1)));
+            writePropertySetting(row, 'col_count', String(Math.max(1, parseInt(propertyColCount.value, 10) || 30)));
+            writePropertySetting(row, 'default_value', propertyDefaultValue.value);
+            writePropertySetting(row, 'show_list', propertyShowList.checked ? 'Y' : 'N');
+            writePropertySetting(row, 'show_detail', propertyShowDetail.checked ? 'Y' : 'N');
+            activeMappingSelect.setAttribute('data-last-choice', newPropertyChoice);
+            refreshPropertyPresentation(activeMappingSelect);
+            closePropertyDialog(false);
+        });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-property-dialog-cancel]'), function (button) {
+        button.addEventListener('click', function () {
+            closePropertyDialog(true);
+        });
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && propertyDialog && !propertyDialog.hidden) {
+            closePropertyDialog(true);
+        }
+    });
     var refreshExistingProperties = function (clear) {
         var iblockId = !clear && targetSelect ? targetSelect.value : '';
         var properties = propertyOptionsByIblock[iblockId] || [];
@@ -869,10 +1273,32 @@ foreach ($errors as $error) {
             if (currentStillExists) {
                 select.value = currentValue;
             } else if (currentValue.indexOf('EXISTING_PROPERTY:') === 0) {
-                select.value = 'PROPERTY:S:0';
+                select.value = newPropertyChoice;
             }
+            select.setAttribute('data-last-choice', select.value);
+            refreshPropertyPresentation(select);
         });
     };
+    Array.prototype.forEach.call(mappingChoices, function (select) {
+        select.setAttribute('data-last-choice', select.value);
+        refreshPropertyPresentation(select);
+        select.addEventListener('change', function () {
+            var oldChoice = select.getAttribute('data-last-choice') || '';
+            if (select.value === newPropertyChoice) {
+                refreshPropertyPresentation(select);
+                openPropertyDialog(select, oldChoice);
+                return;
+            }
+            select.setAttribute('data-last-choice', select.value);
+            refreshPropertyPresentation(select);
+        });
+        var settingsButton = select.closest('tr').querySelector('.wie-property-settings');
+        if (settingsButton) {
+            settingsButton.addEventListener('click', function () {
+                openPropertyDialog(select, newPropertyChoice);
+            });
+        }
+    });
     if (targetMode && newTarget && createTarget && cancelTarget) {
         createTarget.addEventListener('click', function () {
             targetMode.value = 'new';

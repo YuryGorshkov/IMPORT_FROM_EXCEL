@@ -28,7 +28,7 @@ final class RowMapperTest extends TestCase
         ]);
         self::assertSame('X-1', $mapped->properties['ARTIKUL']);
         self::assertSame(
-            ['property_type' => 'S', 'multiple' => false],
+            ['property_type' => 'S', 'multiple' => false, 'create_if_missing' => true],
             $mapped->propertyDefinitions['ARTIKUL']
         );
         self::assertSame('Дизель', $mapped->fields['NAME']);

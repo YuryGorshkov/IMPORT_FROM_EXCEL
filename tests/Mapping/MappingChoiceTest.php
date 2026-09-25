@@ -21,6 +21,17 @@ final class MappingChoiceTest extends TestCase
         ], MappingChoice::decode(MappingChoice::PROPERTY_VALUE, 'artikul'));
     }
 
+    public function testDecodesANewConfiguredNumberProperty(): void
+    {
+        self::assertSame([
+            'target' => 'PROPERTY:PRICE_RUB',
+            'code' => 'PRICE_RUB',
+            'property_type' => 'N',
+            'multiple' => true,
+            'create_if_missing' => true,
+        ], MappingChoice::decode(MappingChoice::PROPERTY_NEW, 'price_rub', 'N', true));
+    }
+
     public function testDecodesAMultipleFileProperty(): void
     {
         self::assertSame([
@@ -64,9 +75,15 @@ final class MappingChoiceTest extends TestCase
         MappingChoice::decode(MappingChoice::PROPERTY_VALUE, 'НЕ КОД');
     }
 
+    public function testRejectsAPropertyCodeLongerThanBitrixAllows(): void
+    {
+        $this->expectException(MappingException::class);
+        MappingChoice::decode(MappingChoice::PROPERTY_NEW, 'A' . str_repeat('B', 50));
+    }
+
     public function testBuildsAChoiceFromAnExistingRule(): void
     {
-        self::assertSame(MappingChoice::PROPERTY_FILE_MULTIPLE, MappingChoice::fromRule([
+        self::assertSame(MappingChoice::PROPERTY_NEW, MappingChoice::fromRule([
             'target' => 'PROPERTY:PHOTO',
             'property_type' => 'F',
             'multiple' => true,

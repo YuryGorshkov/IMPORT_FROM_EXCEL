@@ -45,9 +45,15 @@ final class BitrixIblockGateway implements IblockGatewayInterface
                 $propertyType = 'S';
             }
             if ($existing) {
-                if ($propertyType === 'F' && strtoupper((string) $existing['PROPERTY_TYPE']) !== 'F') {
+                $existingType = strtoupper((string) ($existing['PROPERTY_TYPE'] ?? 'S'));
+                $existingMultiple = ($existing['MULTIPLE'] ?? 'N') === 'Y';
+                if (
+                    ($definition['create_if_missing'] ?? true) !== false
+                    && ($existingType !== $propertyType
+                        || $existingMultiple !== (bool) ($definition['multiple'] ?? false))
+                ) {
                     throw new \RuntimeException(sprintf(
-                        'Property %s already exists in IBlock %d, but it is not a file property.',
+                        'Property %s already exists in IBlock %d with another type or multiplicity.',
                         $code,
                         $iblockId
                     ));
@@ -62,15 +68,69 @@ final class BitrixIblockGateway implements IblockGatewayInterface
                 ));
             }
 
+            $sectionProperty = ($definition['property_show_edit'] ?? true) ? 'Y' : 'N';
+            $smartFilter = ($definition['property_smart_filter'] ?? false) ? 'Y' : 'N';
+            if (
+                \CIBlock::GetArrayByID($iblockId, 'SECTION_PROPERTY') !== 'Y'
+                && ($sectionProperty === 'N' || $smartFilter === 'Y')
+            ) {
+                $iblock = new \CIBlock();
+                if (!$iblock->Update($iblockId, ['SECTION_PROPERTY' => 'Y'])) {
+                    throw new \RuntimeException(sprintf(
+                        'Unable to enable section property settings for IBlock %d: %s',
+                        $iblockId,
+                        $iblock->LAST_ERROR
+                    ));
+                }
+            }
+
+            $linkIblockId = max(0, (int) ($definition['property_link_iblock_id'] ?? 0));
+            if (in_array($propertyType, ['E', 'G'], true) && $linkIblockId === 0) {
+                $linkIblockId = $iblockId;
+            }
+            $withDescription = in_array($propertyType, ['S', 'N', 'F'], true)
+                && (bool) ($definition['property_with_description'] ?? false);
+            $displayType = strtoupper((string) ($definition['property_display_type'] ?? 'F'));
+            if (!in_array($displayType, ['F', 'K', 'P'], true)) {
+                $displayType = 'F';
+            }
             $property = new \CIBlockProperty();
             $id = $property->Add([
                 'IBLOCK_ID' => $iblockId,
-                'NAME' => (string) ($definition['label'] ?? $code),
+                'NAME' => (string) ($definition['property_name'] ?? $definition['label'] ?? $code),
                 'CODE' => $code,
                 'PROPERTY_TYPE' => $propertyType,
+                'LINK_IBLOCK_ID' => $linkIblockId,
                 'MULTIPLE' => ($definition['multiple'] ?? false) ? 'Y' : 'N',
-                'ACTIVE' => 'Y',
-                'SORT' => (int) ($definition['sort'] ?? 500),
+                'ACTIVE' => ($definition['property_active'] ?? true) ? 'Y' : 'N',
+                'SORT' => max(0, (int) ($definition['property_sort'] ?? 500)),
+                'IS_REQUIRED' => ($definition['property_is_required'] ?? false) ? 'Y' : 'N',
+                'SEARCHABLE' => ($definition['property_searchable'] ?? false) ? 'Y' : 'N',
+                'FILTRABLE' => ($definition['property_filtrable'] ?? false) ? 'Y' : 'N',
+                'WITH_DESCRIPTION' => $withDescription ? 'Y' : 'N',
+                'MULTIPLE_CNT' => max(1, (int) ($definition['property_multiple_count'] ?? 5)),
+                'HINT' => (string) ($definition['property_hint'] ?? ''),
+                'SECTION_PROPERTY' => $sectionProperty,
+                'SMART_FILTER' => $smartFilter,
+                'DISPLAY_TYPE' => $displayType,
+                'DISPLAY_EXPANDED' => ($definition['property_display_expanded'] ?? false) ? 'Y' : 'N',
+                'FILTER_HINT' => (string) ($definition['property_filter_hint'] ?? ''),
+                'ROW_COUNT' => max(1, (int) ($definition['property_row_count'] ?? 1)),
+                'COL_COUNT' => max(1, (int) ($definition['property_col_count'] ?? 30)),
+                'DEFAULT_VALUE' => (string) ($definition['property_default_value'] ?? ''),
+                'LIST_TYPE' => 'L',
+                'FEATURES' => [
+                    [
+                        'MODULE_ID' => 'iblock',
+                        'FEATURE_ID' => 'LIST_PAGE_SHOW',
+                        'IS_ENABLED' => ($definition['property_show_list'] ?? false) ? 'Y' : 'N',
+                    ],
+                    [
+                        'MODULE_ID' => 'iblock',
+                        'FEATURE_ID' => 'DETAIL_PAGE_SHOW',
+                        'IS_ENABLED' => ($definition['property_show_detail'] ?? false) ? 'Y' : 'N',
+                    ],
+                ],
             ]);
             if (!$id) {
                 throw new \RuntimeException(sprintf('Unable to create property %s: %s', $code, $property->LAST_ERROR));
@@ -667,6 +727,14 @@ final class BitrixIblockGateway implements IblockGatewayInterface
                         $normalizedCode
                     ));
                 }
+                if ($actualType === 'L') {
+                    $properties[$code] = $this->prepareListPropertyValue(
+                        $definition,
+                        $value,
+                        (bool) ($row->propertyDefinitions[$normalizedCode]['create_if_missing'] ?? false)
+                    );
+                    continue;
+                }
                 if ($actualType !== 'F') {
                     continue;
                 }
@@ -688,6 +756,87 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         }
 
         return [$properties, $temporaryPaths];
+    }
+
+    private function prepareListPropertyValue(array $definition, mixed $value, bool $createMissing): mixed
+    {
+        $propertyId = (int) ($definition['ID'] ?? 0);
+        $propertyCode = (string) ($definition['CODE'] ?? $propertyId);
+        $multiple = ($definition['MULTIPLE'] ?? 'N') === 'Y';
+        if ($propertyId < 1) {
+            throw new \RuntimeException(sprintf('List property %s has no valid ID.', $propertyCode));
+        }
+
+        $values = is_array($value) ? $value : [$value];
+        if ($multiple && !is_array($value) && is_string($value)) {
+            $values = preg_split('/\r\n|\r|\n/u', $value) ?: [];
+        }
+
+        $byId = [];
+        $byValue = [];
+        $enumResult = \CIBlockPropertyEnum::GetList(
+            ['SORT' => 'ASC', 'ID' => 'ASC'],
+            ['PROPERTY_ID' => $propertyId]
+        );
+        while ($enum = $enumResult->Fetch()) {
+            $enumId = (int) ($enum['ID'] ?? 0);
+            if ($enumId < 1) {
+                continue;
+            }
+            $byId[$enumId] = true;
+            $byValue[mb_strtolower(trim((string) ($enum['VALUE'] ?? '')))] = $enumId;
+        }
+
+        $resolved = [];
+        foreach ($values as $item) {
+            if (is_array($item) && array_key_exists('VALUE', $item)) {
+                $item = $item['VALUE'];
+            }
+            $item = trim((string) $item);
+            if ($item === '') {
+                continue;
+            }
+            $numericId = ctype_digit($item) ? (int) $item : 0;
+            if ($numericId > 0 && isset($byId[$numericId])) {
+                $resolved[] = $numericId;
+                continue;
+            }
+
+            $normalizedValue = mb_strtolower($item);
+            if (isset($byValue[$normalizedValue])) {
+                $resolved[] = $byValue[$normalizedValue];
+                continue;
+            }
+            if (!$createMissing) {
+                throw new \RuntimeException(sprintf(
+                    'List value "%s" does not exist in property %s.',
+                    $item,
+                    $propertyCode
+                ));
+            }
+
+            $enum = new \CIBlockPropertyEnum();
+            $enumId = (int) $enum->Add([
+                'PROPERTY_ID' => $propertyId,
+                'VALUE' => $item,
+                'XML_ID' => 'wie-' . substr(sha1($item), 0, 20),
+                'SORT' => 500,
+                'DEF' => 'N',
+            ]);
+            if ($enumId < 1) {
+                throw new \RuntimeException(sprintf(
+                    'Unable to add list value "%s" to property %s.',
+                    $item,
+                    $propertyCode
+                ));
+            }
+            $byId[$enumId] = true;
+            $byValue[$normalizedValue] = $enumId;
+            $resolved[] = $enumId;
+        }
+
+        $resolved = array_values(array_unique($resolved));
+        return $multiple ? $resolved : ($resolved[0] ?? null);
     }
 
     private function propertyDefinitions(int $iblockId): array

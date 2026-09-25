@@ -6,6 +6,7 @@ namespace WebEnot\ImportExcel\Mapping;
 
 final class MappingChoice
 {
+    public const PROPERTY_NEW = 'NEW_PROPERTY';
     public const PROPERTY_VALUE = 'PROPERTY:S:0';
     public const PROPERTY_MULTIPLE = 'PROPERTY:S:1';
     public const PROPERTY_FILE = 'PROPERTY:F:0';
@@ -20,6 +21,7 @@ final class MappingChoice
         $propertyType = strtoupper(trim($propertyType));
         if (
             preg_match('/^[A-Z][A-Z0-9_]*$/', $code) !== 1
+            || strlen($code) > 50
             || !in_array($propertyType, ['S', 'N', 'L', 'F', 'E', 'G'], true)
         ) {
             throw new MappingException('Invalid existing property definition.');
@@ -45,7 +47,7 @@ final class MappingChoice
             return self::existingProperty(substr($target, 9), $type, $multiple === '1');
         }
 
-        return 'PROPERTY:' . ($type === 'F' ? 'F' : 'S') . ':' . $multiple;
+        return self::PROPERTY_NEW;
     }
 
     /**
@@ -57,12 +59,35 @@ final class MappingChoice
      *     create_if_missing?: bool
      * }
      */
-    public static function decode(string $choice, string $propertyCode): array
-    {
+    public static function decode(
+        string $choice,
+        string $propertyCode,
+        string $newPropertyType = 'S',
+        bool $newPropertyMultiple = false
+    ): array {
         $choice = strtoupper(trim($choice));
+        if ($choice === self::PROPERTY_NEW) {
+            $propertyCode = strtoupper(trim($propertyCode));
+            $newPropertyType = strtoupper(trim($newPropertyType));
+            if (preg_match('/^[A-Z][A-Z0-9_]*$/', $propertyCode) !== 1 || strlen($propertyCode) > 50) {
+                throw new MappingException('Property code must contain only A-Z, digits and underscore.');
+            }
+            if (!in_array($newPropertyType, ['S', 'N', 'L', 'F', 'E', 'G'], true)) {
+                throw new MappingException('Unsupported new property type.');
+            }
+
+            return [
+                'target' => 'PROPERTY:' . $propertyCode,
+                'code' => $propertyCode,
+                'property_type' => $newPropertyType,
+                'multiple' => $newPropertyMultiple,
+                'create_if_missing' => true,
+            ];
+        }
+
         if (preg_match('/^PROPERTY:([SF]):([01])$/', $choice, $matches) === 1) {
             $propertyCode = strtoupper(trim($propertyCode));
-            if (preg_match('/^[A-Z][A-Z0-9_]*$/', $propertyCode) !== 1) {
+            if (preg_match('/^[A-Z][A-Z0-9_]*$/', $propertyCode) !== 1 || strlen($propertyCode) > 50) {
                 throw new MappingException('Property code must contain only A-Z, digits and underscore.');
             }
 
