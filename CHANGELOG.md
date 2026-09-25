@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 - 2026-09-25
+
+- Replaced the crowded mapping controls with one grouped destination selector per Excel column.
+- Displayed fixed Bitrix element and section keys inside selector labels instead of editable-looking fields.
+- Kept property codes automatic and collision-safe, with separate choices for ordinary, multiple, file and gallery properties.
+- Confirmed safe partial updates: element fields use `CIBlockElement::Update`, properties use `SetPropertyValuesEx`, and section depth is derived from `IBLOCK_SECTION_ID` by Bitrix.
+
 ## 0.7.1 - 2026-09-25
 
 - Added automatic file-property suggestions for headers such as «Фото», «Картинка», «Изображение» and galleries.
