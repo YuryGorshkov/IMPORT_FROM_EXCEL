@@ -18,6 +18,15 @@ final class IblockCreator
         return strtolower($this->normalizer->normalize($name, 'catalog'));
     }
 
+    public function urlTemplates(): array
+    {
+        return [
+            'LIST_PAGE_URL' => '#SITE_DIR#/#IBLOCK_CODE#/',
+            'SECTION_PAGE_URL' => '#SITE_DIR#/#IBLOCK_CODE#/#SECTION_CODE_PATH#/',
+            'DETAIL_PAGE_URL' => '#SITE_DIR#/#IBLOCK_CODE#/#SECTION_CODE_PATH#/#ELEMENT_CODE#/',
+        ];
+    }
+
     public function create(string $name, string $typeId, string $code = '', string $siteId = ''): int
     {
         if (!Loader::includeModule('iblock')) {
@@ -52,10 +61,7 @@ final class IblockCreator
             'WORKFLOW' => 'N',
             'BIZPROC' => 'N',
             'GROUP_ID' => ['2' => 'R'],
-            'LIST_PAGE_URL' => '#SITE_DIR#/#IBLOCK_CODE#/',
-            'SECTION_PAGE_URL' => '#SITE_DIR#/#IBLOCK_CODE#/#SECTION_CODE#/',
-            'DETAIL_PAGE_URL' => '#SITE_DIR#/#IBLOCK_CODE#/#SECTION_CODE#/#ELEMENT_CODE#/',
-        ]);
+        ] + $this->urlTemplates());
         if ($id < 1) {
             throw new \RuntimeException('Unable to create IBlock: ' . (string) $iblock->LAST_ERROR);
         }

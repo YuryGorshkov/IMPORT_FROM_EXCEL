@@ -65,7 +65,9 @@ final class ColumnDiscoveryService
                     : ($systemField !== null ? 'FIELD:' . $systemField : 'PROPERTY:' . $code),
                 'required' => $systemField === 'NAME',
                 'transforms' => [['type' => 'trim']],
-            ];
+            ] + ($sectionLevel === null && $systemField === null
+                ? ['property_type' => 'S', 'multiple' => false]
+                : []);
         }
 
         if ($columns === []) {

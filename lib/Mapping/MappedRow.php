@@ -12,6 +12,7 @@ final class MappedRow
         public readonly array $properties,
         public readonly array $raw,
         public readonly array $sections = [],
+        public readonly array $propertyDefinitions = [],
     ) {
     }
 

@@ -23,9 +23,10 @@ final class SpreadsheetReaderPreviewTest extends TestCase
         $sheet->fromArray([
             ['Прайс-лист поставщика'],
             [],
-            ['Артикул', 'Название', 'Цена'],
-            ['A-1', 'Товар', 1250],
+            ['Артикул', 'Название', 'Цена', 'Фото'],
+            ['A-1', 'Товар', 1250, 'Открыть фото'],
         ]);
+        $sheet->getCell('D4')->getHyperlink()->setUrl('https://cdn.example.test/product.jpg');
         $book->createSheet()->setTitle('Остатки');
         (new Xlsx($book))->save($this->file);
         $book->disconnectWorksheets();
@@ -53,5 +54,14 @@ final class SpreadsheetReaderPreviewTest extends TestCase
         $reader = new SpreadsheetReader(new SourceFilePolicy());
 
         self::assertSame(['Каталог', 'Остатки'], $reader->sheets($this->file));
+    }
+
+    public function testReadsExternalHyperlinkSeparatelyFromDisplayedText(): void
+    {
+        $reader = new SpreadsheetReader(new SourceFilePolicy());
+        $rows = iterator_to_array($reader->read($this->file, 'Каталог', 4, 1, ['header_row' => 3]));
+
+        self::assertSame('Открыть фото', $rows[0]->cell('D'));
+        self::assertSame('https://cdn.example.test/product.jpg', $rows[0]->link('D'));
     }
 }

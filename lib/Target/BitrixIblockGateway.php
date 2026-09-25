@@ -13,8 +13,10 @@ use WebEnot\ImportExcel\Mapping\SectionFieldCatalog;
 final class BitrixIblockGateway implements IblockGatewayInterface
 {
     private readonly BitrixImageResolver $imageResolver;
+    private readonly FilePropertyValueResolver $filePropertyValueResolver;
     private readonly ElementCodeGenerator $sectionCodeGenerator;
     private array $updatedSectionHashes = [];
+    private array $propertyDefinitionsByIblock = [];
 
     public function __construct(
         ?BitrixImageResolver $imageResolver = null,
@@ -24,6 +26,7 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             throw new \RuntimeException('The Bitrix IBlock module is required.');
         }
         $this->imageResolver = $imageResolver ?? new BitrixImageResolver();
+        $this->filePropertyValueResolver = new FilePropertyValueResolver($this->imageResolver);
         $this->sectionCodeGenerator = $sectionCodeGenerator
             ?? new ElementCodeGenerator(new HeaderNormalizer());
     }
@@ -37,14 +40,21 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             }
             [, $code] = $this->parseTarget($target);
             $existing = \CIBlockProperty::GetList([], ['IBLOCK_ID' => $iblockId, 'CODE' => $code])->Fetch();
-            if ($existing) {
-                continue;
-            }
-
             $propertyType = strtoupper((string) ($definition['property_type'] ?? 'S'));
             if (!in_array($propertyType, ['S', 'N', 'L', 'F', 'E', 'G'], true)) {
                 $propertyType = 'S';
             }
+            if ($existing) {
+                if ($propertyType === 'F' && strtoupper((string) $existing['PROPERTY_TYPE']) !== 'F') {
+                    throw new \RuntimeException(sprintf(
+                        'Property %s already exists in IBlock %d, but it is not a file property.',
+                        $code,
+                        $iblockId
+                    ));
+                }
+                continue;
+            }
+
             $property = new \CIBlockProperty();
             $id = $property->Add([
                 'IBLOCK_ID' => $iblockId,
@@ -58,6 +68,7 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             if (!$id) {
                 throw new \RuntimeException(sprintf('Unable to create property %s: %s', $code, $property->LAST_ERROR));
             }
+            unset($this->propertyDefinitionsByIblock[$iblockId]);
         }
     }
 
@@ -254,16 +265,18 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             throw new \RuntimeException('FIELD:NAME is required when a new element is created.');
         }
         [$fields, $temporaryPaths] = $this->preparePictureFields($fields);
+        [$properties, $propertyTemporaryPaths] = $this->preparePropertyValues($iblockId, $row);
+        $temporaryPaths = array_merge($temporaryPaths, $propertyTemporaryPaths);
         try {
             $id = (int) $element->Add($fields, false, true, true);
             if ($id < 1) {
                 throw new \RuntimeException('Unable to add IBlock element: ' . $element->LAST_ERROR);
             }
+            if ($properties !== []) {
+                \CIBlockElement::SetPropertyValuesEx($id, $iblockId, $properties);
+            }
         } finally {
             $this->cleanupTemporaryFiles($temporaryPaths);
-        }
-        if ($row->properties !== []) {
-            \CIBlockElement::SetPropertyValuesEx($id, $iblockId, $row->properties);
         }
         return $id;
     }
@@ -271,18 +284,21 @@ final class BitrixIblockGateway implements IblockGatewayInterface
     public function update(int $elementId, MappedRow $row): void
     {
         $snapshot = $this->snapshot($elementId);
+        $iblockId = (int) $snapshot['fields']['IBLOCK_ID'];
         $element = new \CIBlockElement();
         $fields = $this->sanitizeFields($row->fields);
         [$fields, $temporaryPaths] = $this->preparePictureFields($fields);
+        [$properties, $propertyTemporaryPaths] = $this->preparePropertyValues($iblockId, $row);
+        $temporaryPaths = array_merge($temporaryPaths, $propertyTemporaryPaths);
         try {
             if ($fields !== [] && !$element->Update($elementId, $fields, false, true, true)) {
                 throw new \RuntimeException('Unable to update IBlock element: ' . $element->LAST_ERROR);
             }
+            if ($properties !== []) {
+                \CIBlockElement::SetPropertyValuesEx($elementId, $iblockId, $properties);
+            }
         } finally {
             $this->cleanupTemporaryFiles($temporaryPaths);
-        }
-        if ($row->properties !== []) {
-            \CIBlockElement::SetPropertyValuesEx($elementId, (int) $snapshot['fields']['IBLOCK_ID'], $row->properties);
         }
     }
 
@@ -609,6 +625,80 @@ final class BitrixIblockGateway implements IblockGatewayInterface
         }
 
         return [$fields, $temporaryPaths];
+    }
+
+    /**
+     * @return array{0: array, 1: list<string>}
+     */
+    private function preparePropertyValues(int $iblockId, MappedRow $row): array
+    {
+        $properties = $row->properties;
+        $temporaryPaths = [];
+        $definitions = $this->propertyDefinitions($iblockId);
+        try {
+            foreach ($properties as $code => $value) {
+                $normalizedCode = strtoupper((string) $code);
+                $definition = $definitions[$normalizedCode] ?? null;
+                $expectedType = strtoupper((string) (
+                    $row->propertyDefinitions[$normalizedCode]['property_type'] ?? ''
+                ));
+                if ($definition === null) {
+                    if ($expectedType === 'F') {
+                        throw new \RuntimeException(sprintf(
+                            'File property %s does not exist in IBlock %d.',
+                            $normalizedCode,
+                            $iblockId
+                        ));
+                    }
+                    continue;
+                }
+
+                $actualType = strtoupper((string) ($definition['PROPERTY_TYPE'] ?? ''));
+                if ($expectedType === 'F' && $actualType !== 'F') {
+                    throw new \RuntimeException(sprintf(
+                        'Property %s is configured as an image in the import profile, but it is not a file property in Bitrix.',
+                        $normalizedCode
+                    ));
+                }
+                if ($actualType !== 'F') {
+                    continue;
+                }
+
+                $resolved = $this->filePropertyValueResolver->resolve(
+                    $value,
+                    ($definition['MULTIPLE'] ?? 'N') === 'Y'
+                );
+                if ($resolved['empty']) {
+                    unset($properties[$code]);
+                    continue;
+                }
+                $properties[$code] = $resolved['value'];
+                $temporaryPaths = array_merge($temporaryPaths, $resolved['temporary_paths']);
+            }
+        } catch (\Throwable $exception) {
+            $this->cleanupTemporaryFiles($temporaryPaths);
+            throw $exception;
+        }
+
+        return [$properties, $temporaryPaths];
+    }
+
+    private function propertyDefinitions(int $iblockId): array
+    {
+        if (isset($this->propertyDefinitionsByIblock[$iblockId])) {
+            return $this->propertyDefinitionsByIblock[$iblockId];
+        }
+
+        $definitions = [];
+        $result = \CIBlockProperty::GetList(['ID' => 'ASC'], ['IBLOCK_ID' => $iblockId]);
+        while ($property = $result->Fetch()) {
+            $code = strtoupper(trim((string) ($property['CODE'] ?? '')));
+            if ($code !== '') {
+                $definitions[$code] = $property;
+            }
+        }
+
+        return $this->propertyDefinitionsByIblock[$iblockId] = $definitions;
     }
 
     private function cleanupTemporaryFiles(array $paths): void

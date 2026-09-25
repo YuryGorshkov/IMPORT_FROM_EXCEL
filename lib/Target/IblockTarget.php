@@ -99,7 +99,14 @@ final class IblockTarget
         }
         if ($existingHasCode) {
             unset($fields['CODE']);
-            return new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections);
+            return new MappedRow(
+                $row->rowNumber,
+                $fields,
+                $row->properties,
+                $row->raw,
+                $row->sections,
+                $row->propertyDefinitions
+            );
         }
 
         $source = $profile->elementCodeSource();
@@ -116,7 +123,14 @@ final class IblockTarget
         }
 
         $fields['CODE'] = $this->gateway->uniqueCode($profile->targetId, $baseCode, $elementId);
-        return new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections);
+        return new MappedRow(
+            $row->rowNumber,
+            $fields,
+            $row->properties,
+            $row->raw,
+            $row->sections,
+            $row->propertyDefinitions
+        );
     }
 
     /**
@@ -137,7 +151,14 @@ final class IblockTarget
         $fields = $row->fields;
         $fields['IBLOCK_SECTION_ID'] = $result->sectionId;
         return [
-            new MappedRow($row->rowNumber, $fields, $row->properties, $row->raw, $row->sections),
+            new MappedRow(
+                $row->rowNumber,
+                $fields,
+                $row->properties,
+                $row->raw,
+                $row->sections,
+                $row->propertyDefinitions
+            ),
             $result,
         ];
     }

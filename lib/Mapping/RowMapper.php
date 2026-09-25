@@ -20,11 +20,15 @@ final class RowMapper
         $fields = [];
         $properties = [];
         $sections = [];
+        $propertyDefinitions = [];
 
         foreach ($mapping as $rule) {
             $column = strtoupper((string) $rule['column']);
             $target = strtoupper((string) $rule['target']);
             $value = $row->cell($column);
+            if ($this->isImageTarget($target, $rule) && $row->link($column) !== null) {
+                $value = $row->link($column);
+            }
             if (($value === null || $value === '') && array_key_exists('default', $rule)) {
                 $value = $rule['default'];
             }
@@ -36,6 +40,10 @@ final class RowMapper
             [$scope, $name] = explode(':', $target, 2);
             if ($scope === 'PROPERTY') {
                 $properties[$name] = $value;
+                $propertyDefinitions[$name] = [
+                    'property_type' => strtoupper((string) ($rule['property_type'] ?? 'S')),
+                    'multiple' => (bool) ($rule['multiple'] ?? false),
+                ];
             } elseif ($scope === 'SECTION') {
                 $sectionTarget = SectionPath::parseTarget($target);
                 if ($sectionTarget === null) {
@@ -47,6 +55,29 @@ final class RowMapper
             }
         }
 
-        return new MappedRow($row->number, $fields, $properties, $row->cells, $sections);
+        return new MappedRow(
+            $row->number,
+            $fields,
+            $properties,
+            $row->cells,
+            $sections,
+            $propertyDefinitions
+        );
+    }
+
+    private function isImageTarget(string $target, array $rule): bool
+    {
+        if (str_starts_with($target, 'PROPERTY:')) {
+            return strtoupper((string) ($rule['property_type'] ?? 'S')) === 'F';
+        }
+        if (str_starts_with($target, 'FIELD:')) {
+            return ElementFieldCatalog::isPicture(substr($target, 6));
+        }
+        if (str_starts_with($target, 'SECTION:')) {
+            $parsed = SectionPath::parseTarget($target);
+            return $parsed !== null && SectionFieldCatalog::isPicture($parsed['field']);
+        }
+
+        return false;
     }
 }

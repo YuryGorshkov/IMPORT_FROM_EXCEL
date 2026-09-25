@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 - 2026-09-25
+
+- Added a visible property type selector for ordinary values and image/file properties.
+- Added protected download of public HTTP/HTTPS images into single and multiple Bitrix file properties.
+- Added support for external Excel hyperlinks in image columns, even when the cell displays a label instead of the URL.
+- Added newline-separated image lists for multiple properties, with one URL per line.
+- Added validation when an image mapping points to an existing non-file property.
+- Changed new IBlock URL templates to use `#SECTION_CODE_PATH#` so nested section codes form the complete path.
+- Hid internal mapping prefixes from the visible Bitrix field-code badge to avoid confusing them with URL parts.
+
 ## 0.6.0 - 2026-09-24
 
 - Reworked nested sections to match the Bitrix data model instead of treating a level as a single synthetic field.

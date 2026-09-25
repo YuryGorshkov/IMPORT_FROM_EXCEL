@@ -21,6 +21,10 @@ final class BitrixImageResolver
         'image/avif' => 'avif',
     ];
 
+    public function __construct(private readonly ?\Closure $remoteDownloader = null)
+    {
+    }
+
     /**
      * @return array{file: array, temporary_path: string}
      */
@@ -75,23 +79,8 @@ final class BitrixImageResolver
             throw new \RuntimeException('Unable to allocate a temporary image file.');
         }
 
-        $client = new HttpClient([
-            'socketTimeout' => 10,
-            'streamTimeout' => 20,
-            'redirect' => true,
-            'redirectMax' => 3,
-            'bodyLengthMax' => self::MAX_BYTES,
-            'privateIp' => false,
-            'disableSslVerification' => false,
-        ]);
         try {
-            if (!$client->download($source, $temporaryPath)) {
-                throw new \RuntimeException('Unable to download the image.');
-            }
-            $status = $client->getStatus();
-            if ($status < 200 || $status >= 300) {
-                throw new \RuntimeException(sprintf('Image server returned HTTP status %d.', $status));
-            }
+            $this->download($source, $temporaryPath);
             $size = filesize($temporaryPath);
             if ($size === false || $size < 1 || $size > self::MAX_BYTES) {
                 throw new \InvalidArgumentException('The downloaded image is empty or exceeds 15 MB.');
@@ -113,6 +102,7 @@ final class BitrixImageResolver
                     'tmp_name' => $temporaryPath,
                     'error' => UPLOAD_ERR_OK,
                     'size' => $size,
+                    'MODULE_ID' => 'iblock',
                 ],
                 'temporary_path' => $temporaryPath,
             ];
@@ -129,6 +119,33 @@ final class BitrixImageResolver
             throw new \InvalidArgumentException('Unable to prepare the image for Bitrix.');
         }
 
+        $file['MODULE_ID'] = 'iblock';
+
         return $file;
+    }
+
+    private function download(string $source, string $temporaryPath): void
+    {
+        if ($this->remoteDownloader !== null) {
+            ($this->remoteDownloader)($source, $temporaryPath, self::MAX_BYTES);
+            return;
+        }
+
+        $client = new HttpClient([
+            'socketTimeout' => 10,
+            'streamTimeout' => 20,
+            'redirect' => true,
+            'redirectMax' => 3,
+            'bodyLengthMax' => self::MAX_BYTES,
+            'privateIp' => false,
+            'disableSslVerification' => false,
+        ]);
+        if (!$client->download($source, $temporaryPath)) {
+            throw new \RuntimeException('Unable to download the image.');
+        }
+        $status = $client->getStatus();
+        if ($status < 200 || $status >= 300) {
+            throw new \RuntimeException(sprintf('Image server returned HTTP status %d.', $status));
+        }
     }
 }

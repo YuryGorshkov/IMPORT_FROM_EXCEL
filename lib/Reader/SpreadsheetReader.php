@@ -46,6 +46,7 @@ final class SpreadsheetReader implements ReaderInterface
             $lastColumn = Coordinate::columnIndexFromString($worksheet->getHighestDataColumn());
             for ($rowNumber = $startRow; $rowNumber <= $lastRow; $rowNumber++) {
                 $values = [];
+                $links = [];
                 $hasValue = false;
                 for ($column = 1; $column <= $lastColumn; $column++) {
                     $cell = $worksheet->getCell([$column, $rowNumber]);
@@ -59,11 +60,16 @@ final class SpreadsheetReader implements ReaderInterface
                     if ($value !== null && $value !== '') {
                         $hasValue = true;
                     }
-                    $values[Coordinate::stringFromColumnIndex($column)] = $value;
+                    $columnName = Coordinate::stringFromColumnIndex($column);
+                    $values[$columnName] = $value;
+                    $hyperlink = trim((string) $cell->getHyperlink()->getUrl());
+                    if (preg_match('#^https?://#i', $hyperlink) === 1) {
+                        $links[$columnName] = $hyperlink;
+                    }
                 }
 
                 if ($hasValue || ($options['include_empty_rows'] ?? false) === true) {
-                    yield new Row($rowNumber, $values);
+                    yield new Row($rowNumber, $values, $links);
                 }
             }
         } finally {

@@ -30,6 +30,16 @@ final class MappingValidator
             if (str_starts_with($target, 'FIELD:') && !ElementFieldCatalog::isSupported(substr($target, 6))) {
                 throw new MappingException(sprintf('Unsupported element field "%s" in rule %d.', $target, $index + 1));
             }
+            if (str_starts_with($target, 'PROPERTY:')) {
+                $propertyType = strtoupper((string) ($rule['property_type'] ?? 'S'));
+                if (!in_array($propertyType, ['S', 'N', 'L', 'F', 'E', 'G'], true)) {
+                    throw new MappingException(sprintf(
+                        'Unsupported property type "%s" in rule %d.',
+                        $propertyType,
+                        $index + 1
+                    ));
+                }
+            }
             if (str_starts_with($target, 'SECTION:') && !SectionPath::isTarget($target)) {
                 throw new MappingException(sprintf('Unsupported section field "%s" in rule %d.', $target, $index + 1));
             }

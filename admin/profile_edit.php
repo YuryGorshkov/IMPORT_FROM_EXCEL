@@ -63,6 +63,11 @@ function webenotImportExcelMappingFromRequest(array $rows): array
             'required' => isset($row['required']),
             'transforms' => is_array($transforms) ? $transforms : [['type' => 'trim']],
         ];
+        if ($targetType === 'PROPERTY') {
+            $propertyType = strtoupper(trim((string) ($row['property_type'] ?? 'S')));
+            $rule['property_type'] = in_array($propertyType, ['S', 'F'], true) ? $propertyType : 'S';
+            $rule['multiple'] = isset($row['multiple']);
+        }
 
         $defaultJson = (string) ($row['default_json'] ?? '');
         if ($defaultJson !== '') {
@@ -87,6 +92,13 @@ function webenotImportExcelPreviewValue(mixed $value): string
     }
 
     return trim((string) preg_replace('/\s+/u', ' ', (string) $value));
+}
+
+function webenotImportExcelSystemFieldCode(string $destination): string
+{
+    $parts = explode(':', strtoupper($destination));
+
+    return (string) end($parts);
 }
 
 $id = (int) ($_REQUEST['ID'] ?? 0);
@@ -583,6 +595,8 @@ foreach ($errors as $error) {
                             $destination = $targetType === 'PROPERTY'
                                 ? 'PROPERTY'
                                 : $targetType . ':' . $targetCode;
+                            $propertyType = strtoupper((string) ($rule['property_type'] ?? 'S')) === 'F' ? 'F' : 'S';
+                            $propertyMultiple = (bool) ($rule['multiple'] ?? false);
                             $transformsJson = json_encode($rule['transforms'] ?? [['type' => 'trim']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                             $defaultJson = array_key_exists('default', $rule)
                                 ? json_encode($rule['default'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
@@ -613,8 +627,21 @@ foreach ($errors as $error) {
                                                 </optgroup>
                                             <?php endfor; ?>
                                         </select>
-                                        <span class="wie-system-code" data-fixed-destination<?= $destination === 'PROPERTY' ? ' hidden' : '' ?>><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SYSTEM_CODE')) ?></span><code data-destination-code><?= htmlspecialcharsbx($destination) ?></code></span>
+                                        <span class="wie-system-code" data-fixed-destination<?= $destination === 'PROPERTY' ? ' hidden' : '' ?>><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SYSTEM_CODE')) ?></span><code data-destination-code><?= htmlspecialcharsbx(webenotImportExcelSystemFieldCode($destination)) ?></code></span>
                                         <input name="mapping_rows[<?= (int) $index ?>][property_code]" data-property-code required pattern="[A-Z][A-Z0-9_]*" value="<?= htmlspecialcharsbx($targetType === 'PROPERTY' ? $targetCode : '') ?>"<?= $targetType === 'PROPERTY' ? '' : ' hidden disabled' ?> aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_CODE')) ?>">
+                                    </div>
+                                    <div class="wie-property-options" data-property-options<?= $destination === 'PROPERTY' ? '' : ' hidden' ?>>
+                                        <label>
+                                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_TYPE')) ?></span>
+                                            <select name="mapping_rows[<?= (int) $index ?>][property_type]" data-property-type<?= $destination === 'PROPERTY' ? '' : ' disabled' ?>>
+                                                <option value="S"<?= $propertyType === 'S' ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_TYPE_VALUE')) ?></option>
+                                                <option value="F"<?= $propertyType === 'F' ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_TYPE_IMAGE')) ?></option>
+                                            </select>
+                                        </label>
+                                        <label class="wie-property-multiple">
+                                            <input type="checkbox" name="mapping_rows[<?= (int) $index ?>][multiple]" value="Y" data-property-multiple<?= $propertyMultiple ? ' checked' : '' ?><?= $destination === 'PROPERTY' ? '' : ' disabled' ?>>
+                                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_MULTIPLE')) ?></span>
+                                        </label>
                                     </div>
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][transforms_json]" value="<?= htmlspecialcharsbx((string) $transformsJson) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][default_json]" value="<?= htmlspecialcharsbx((string) $defaultJson) ?>">
@@ -727,12 +754,19 @@ foreach ($errors as $error) {
         var fixedDestination = control.querySelector('[data-fixed-destination]');
         var destinationCode = control.querySelector('[data-destination-code]');
         var propertyCode = control.querySelector('[data-property-code]');
+        var propertyOptions = control.parentNode.querySelector('[data-property-options]');
+        var propertyType = propertyOptions.querySelector('[data-property-type]');
+        var propertyMultiple = propertyOptions.querySelector('[data-property-multiple]');
         var refreshDestination = function () {
             var isProperty = destinationSelect.value === 'PROPERTY';
             fixedDestination.hidden = isProperty;
             propertyCode.hidden = !isProperty;
             propertyCode.disabled = !isProperty;
-            destinationCode.textContent = destinationSelect.value;
+            propertyOptions.hidden = !isProperty;
+            propertyType.disabled = !isProperty;
+            propertyMultiple.disabled = !isProperty;
+            var destinationParts = destinationSelect.value.split(':');
+            destinationCode.textContent = destinationParts[destinationParts.length - 1];
         };
         destinationSelect.addEventListener('change', refreshDestination);
         refreshDestination();

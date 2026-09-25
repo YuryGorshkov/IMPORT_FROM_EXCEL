@@ -31,6 +31,30 @@ final class MappingValidatorTest extends TestCase
         ]);
     }
 
+    public function testAcceptsFileProperty(): void
+    {
+        (new MappingValidator())->validate([[
+            'column' => 'A',
+            'target' => 'PROPERTY:MORE_PHOTO',
+            'property_type' => 'F',
+            'multiple' => true,
+        ]]);
+
+        self::addToAssertionCount(1);
+    }
+
+    public function testRejectsUnsupportedPropertyType(): void
+    {
+        $this->expectException(MappingException::class);
+        $this->expectExceptionMessage('Unsupported property type');
+
+        (new MappingValidator())->validate([[
+            'column' => 'A',
+            'target' => 'PROPERTY:PHOTO',
+            'property_type' => 'PHP',
+        ]]);
+    }
+
     public function testAcceptsSectionLevels(): void
     {
         (new MappingValidator())->validate([
