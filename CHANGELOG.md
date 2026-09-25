@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 - 2026-09-25
+
+- Simplified mapping labels for content managers: only friendly destinations and transliterated source-column codes are displayed.
+- Made the visible Latin code depend on the Excel header rather than the selected Bitrix destination.
+- Removed PHP variables and API-specific prefixes from the profile form while preserving internal mappings unchanged.
+
 ## 0.8.1 - 2026-09-25
 
 - Replaced internal mapping identifiers such as `PROPERTY:ARTIKUL` with the documented Bitrix PHP array notation in the administration UI.

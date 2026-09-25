@@ -14,6 +14,15 @@ final class HeaderNormalizerTest extends TestCase
         self::assertSame('MOSHCHNOST_DVIGATELYA', (new HeaderNormalizer())->normalize('Мощность двигателя'));
     }
 
+    public function testEverySourceHeaderGetsItsOwnLiteralLatinCode(): void
+    {
+        $normalizer = new HeaderNormalizer();
+
+        self::assertSame('ARTIKUL', $normalizer->normalize('Артикул'));
+        self::assertSame('ARTSRIKUL', $normalizer->normalize('Артсрикул'));
+        self::assertSame('GOVNOTIKUL', $normalizer->normalize('Говнотикул'));
+    }
+
     public function testPunctuationAndRepeatedSpacesAreCollapsed(): void
     {
         self::assertSame('NOMINALNOE_NAPRYAZHENIE_V', (new HeaderNormalizer())->normalize(' Номинальное  напряжение, В '));

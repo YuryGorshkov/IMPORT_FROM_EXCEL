@@ -8,7 +8,6 @@ use WebEnot\ImportExcel\Admin\AdminUi;
 use WebEnot\ImportExcel\Discovery\HeaderNormalizer;
 use WebEnot\ImportExcel\Discovery\HeaderRowDetector;
 use WebEnot\ImportExcel\Mapping\MappingChoice;
-use WebEnot\ImportExcel\Mapping\TargetNotation;
 use WebEnot\ImportExcel\Mapping\MappingValidator;
 use WebEnot\ImportExcel\Mapping\SectionFieldCatalog;
 use WebEnot\ImportExcel\Mapping\SectionPath;
@@ -412,19 +411,7 @@ if (!isset($iblockTypes[$newIblockType])) {
     $newIblockType = (string) (array_key_first($iblockTypes) ?? '');
 }
 
-$uniqueTargets = [];
-foreach ($form['mapping'] as $rule) {
-    $target = (string) ($rule['target'] ?? '');
-    if ($target !== '' && !SectionPath::isTarget($target)) {
-        $uniqueTargets[$target] = (string) ($rule['label'] ?? $target);
-    }
-}
-$currentUniqueTarget = (string) ($form['options']['unique_target'] ?? 'FIELD:XML_ID');
-if (!isset($uniqueTargets[$currentUniqueTarget])) {
-    $currentUniqueTarget = (string) (array_key_first($uniqueTargets) ?? '');
-}
-
-$mappingPropertyCodes = [];
+$mappingSourceCodes = [];
 $usedPropertyCodes = [];
 foreach ($form['mapping'] as $index => $rule) {
     $target = strtoupper((string) ($rule['target'] ?? ''));
@@ -433,13 +420,13 @@ foreach ($form['mapping'] as $index => $rule) {
     }
     $propertyCode = substr($target, 9);
     if ($propertyCode !== '') {
-        $mappingPropertyCodes[$index] = $propertyCode;
+        $mappingSourceCodes[$index] = $propertyCode;
         $usedPropertyCodes[$propertyCode] = true;
     }
 }
 $headerNormalizer = new HeaderNormalizer();
 foreach ($form['mapping'] as $index => $rule) {
-    if (isset($mappingPropertyCodes[$index])) {
+    if (isset($mappingSourceCodes[$index])) {
         continue;
     }
     $baseCode = $headerNormalizer->normalize(
@@ -452,8 +439,23 @@ foreach ($form['mapping'] as $index => $rule) {
         $tail = '_' . $suffix++;
         $propertyCode = substr($baseCode, 0, 50 - strlen($tail)) . $tail;
     }
-    $mappingPropertyCodes[$index] = $propertyCode;
+    $mappingSourceCodes[$index] = $propertyCode;
     $usedPropertyCodes[$propertyCode] = true;
+}
+
+$uniqueTargets = [];
+foreach ($form['mapping'] as $index => $rule) {
+    $target = (string) ($rule['target'] ?? '');
+    if ($target !== '' && !SectionPath::isTarget($target)) {
+        $uniqueTargets[$target] = [
+            'label' => (string) ($rule['label'] ?? $target),
+            'source_code' => (string) ($mappingSourceCodes[$index] ?? ''),
+        ];
+    }
+}
+$currentUniqueTarget = (string) ($form['options']['unique_target'] ?? 'FIELD:XML_ID');
+if (!isset($uniqueTargets[$currentUniqueTarget])) {
+    $currentUniqueTarget = (string) (array_key_first($uniqueTargets) ?? '');
 }
 
 $title = $id > 0
@@ -659,7 +661,7 @@ foreach ($errors as $error) {
                         <tbody>
                         <?php foreach ($form['mapping'] as $index => $rule) :
                             $choice = MappingChoice::fromRule($rule);
-                            $propertyCode = (string) ($mappingPropertyCodes[$index] ?? 'COLUMN_' . ($index + 1));
+                            $sourceCode = (string) ($mappingSourceCodes[$index] ?? 'COLUMN_' . ($index + 1));
                             $transformsJson = json_encode($rule['transforms'] ?? [['type' => 'trim']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                             $defaultJson = array_key_exists('default', $rule)
                                 ? json_encode($rule['default'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
@@ -672,15 +674,15 @@ foreach ($errors as $error) {
                                 <td>
                                     <select name="mapping_rows[<?= (int) $index ?>][choice]" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>">
                                         <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_PROPERTIES')) ?>">
-                                            <option value="<?= MappingChoice::PROPERTY_VALUE ?>"<?= $choice === MappingChoice::PROPERTY_VALUE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE'), TargetNotation::write('PROPERTY:' . $propertyCode))) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE_MULTIPLE'), TargetNotation::write('PROPERTY:' . $propertyCode))) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_FILE ?>"<?= $choice === MappingChoice::PROPERTY_FILE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE'), TargetNotation::write('PROPERTY:' . $propertyCode))) ?></option>
-                                            <option value="<?= MappingChoice::PROPERTY_FILE_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_FILE_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE_MULTIPLE'), TargetNotation::write('PROPERTY:' . $propertyCode))) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_VALUE ?>"<?= $choice === MappingChoice::PROPERTY_VALUE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE'), $sourceCode)) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_VALUE_MULTIPLE'), $sourceCode)) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_FILE ?>"<?= $choice === MappingChoice::PROPERTY_FILE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE'), $sourceCode)) ?></option>
+                                            <option value="<?= MappingChoice::PROPERTY_FILE_MULTIPLE ?>"<?= $choice === MappingChoice::PROPERTY_FILE_MULTIPLE ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf((string) Loc::getMessage('WIE_PROFILE_MAPPING_PROPERTY_FILE_MULTIPLE'), $sourceCode)) ?></option>
                                         </optgroup>
                                         <?php foreach ($elementFieldGroups as $groupMessage => $fieldCodes) : ?>
                                             <optgroup label="<?= htmlspecialcharsbx((string) Loc::getMessage($groupMessage)) ?>">
                                                 <?php foreach ($fieldCodes as $fieldCode) : ?>
-                                                    <option value="FIELD:<?= $fieldCode ?>"<?= $choice === 'FIELD:' . $fieldCode ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf('%s — %s', (string) Loc::getMessage($elementFieldMessages[$fieldCode]), TargetNotation::write('FIELD:' . $fieldCode))) ?></option>
+                                                    <option value="FIELD:<?= $fieldCode ?>"<?= $choice === 'FIELD:' . $fieldCode ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf('%s — %s', (string) Loc::getMessage($elementFieldMessages[$fieldCode]), $sourceCode)) ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endforeach; ?>
@@ -689,12 +691,12 @@ foreach ($errors as $error) {
                                                 <?php foreach (SectionFieldCatalog::codes() as $sectionFieldCode) :
                                                     $sectionDestination = SectionPath::target($level, $sectionFieldCode);
                                                     ?>
-                                                    <option value="<?= htmlspecialcharsbx($sectionDestination) ?>"<?= $choice === $sectionDestination ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf('%s — %s', (string) Loc::getMessage($sectionFieldMessages[$sectionFieldCode]), TargetNotation::write($sectionDestination))) ?></option>
+                                                    <option value="<?= htmlspecialcharsbx($sectionDestination) ?>"<?= $choice === $sectionDestination ? ' selected' : '' ?>><?= htmlspecialcharsbx(sprintf('%s — %s', (string) Loc::getMessage($sectionFieldMessages[$sectionFieldCode]), $sourceCode)) ?></option>
                                                 <?php endforeach; ?>
                                             </optgroup>
                                         <?php endfor; ?>
                                     </select>
-                                    <input type="hidden" name="mapping_rows[<?= (int) $index ?>][property_code]" value="<?= htmlspecialcharsbx($propertyCode) ?>">
+                                    <input type="hidden" name="mapping_rows[<?= (int) $index ?>][property_code]" value="<?= htmlspecialcharsbx($sourceCode) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][transforms_json]" value="<?= htmlspecialcharsbx((string) $transformsJson) ?>">
                                     <input type="hidden" name="mapping_rows[<?= (int) $index ?>][default_json]" value="<?= htmlspecialcharsbx((string) $defaultJson) ?>">
                                 </td>
@@ -715,8 +717,8 @@ foreach ($errors as $error) {
                 <div class="wie-field">
                     <label class="wie-label" for="wie-unique"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_UNIQUE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_UNIQUE_HINT')); ?></label>
                     <select id="wie-unique" name="unique_target" required>
-                        <?php foreach ($uniqueTargets as $target => $label) : ?>
-                            <option value="<?= htmlspecialcharsbx($target) ?>"<?= $currentUniqueTarget === $target ? ' selected' : '' ?>><?= htmlspecialcharsbx($label . ' · ' . TargetNotation::filter($target)) ?></option>
+                        <?php foreach ($uniqueTargets as $target => $uniqueTarget) : ?>
+                            <option value="<?= htmlspecialcharsbx($target) ?>"<?= $currentUniqueTarget === $target ? ' selected' : '' ?>><?= htmlspecialcharsbx($uniqueTarget['label'] . ' · ' . $uniqueTarget['source_code']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
