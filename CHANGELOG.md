@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.1 - 2026-09-25
+
+- Added the first mapping option `— выбрать значение —` instead of selecting an arbitrary destination.
+- Kept automatic selection only for known Bitrix fields, section columns and exact existing-property matches by code or name.
+- Left ambiguous custom columns unconfirmed after discovery and required an explicit choice or disabling the column.
+- Added a separate color-coded mapping status column: green for automatic recognition, yellow when a choice is required and blue for a user-configured destination.
+- Reset unavailable existing-property selections to the neutral placeholder when the target IBlock changes.
+
 ## 0.10.0 - 2026-09-25
 
 - Added a dedicated Bitrix-style settings window for every newly created IBlock property.

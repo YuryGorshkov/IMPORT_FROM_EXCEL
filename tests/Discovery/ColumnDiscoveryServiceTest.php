@@ -45,6 +45,10 @@ final class ColumnDiscoveryServiceTest extends TestCase
         self::assertSame('SECTION:2:NAME', $mapping[2]['target']);
         self::assertSame('PROPERTY:MOSHCHNOST_DVIGATELYA', $mapping[3]['target']);
         self::assertSame('PROPERTY:MOSHCHNOST_DVIGATELYA_2', $mapping[4]['target']);
+        self::assertTrue($mapping[3]['unconfirmed']);
+        self::assertFalse($mapping[3]['auto_selected']);
+        self::assertTrue($mapping[0]['auto_selected']);
+        self::assertArrayNotHasKey('unconfirmed', $mapping[0]);
         self::assertSame('Мощность двигателя', $mapping[3]['label']);
         self::assertSame('F', $mapping[5]['property_type']);
         self::assertFalse($mapping[5]['multiple']);

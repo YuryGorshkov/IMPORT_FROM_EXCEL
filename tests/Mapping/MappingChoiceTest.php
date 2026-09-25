@@ -83,6 +83,10 @@ final class MappingChoiceTest extends TestCase
 
     public function testBuildsAChoiceFromAnExistingRule(): void
     {
+        self::assertSame('', MappingChoice::fromRule([
+            'target' => 'PROPERTY:UNCONFIRMED',
+            'unconfirmed' => true,
+        ]));
         self::assertSame(MappingChoice::PROPERTY_NEW, MappingChoice::fromRule([
             'target' => 'PROPERTY:PHOTO',
             'property_type' => 'F',

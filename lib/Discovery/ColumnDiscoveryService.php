@@ -65,10 +65,12 @@ final class ColumnDiscoveryService
                 'target' => $sectionLevel !== null
                     ? SectionPath::target($sectionLevel, 'NAME')
                     : ($systemField !== null ? 'FIELD:' . $systemField : 'PROPERTY:' . $code),
+                'auto_selected' => !$isCustomProperty,
                 'required' => $systemField === 'NAME',
                 'transforms' => [['type' => 'trim']],
             ] + ($isCustomProperty
                 ? [
+                    'unconfirmed' => true,
                     'property_type' => $isImageProperty ? 'F' : 'S',
                     'multiple' => $isImageProperty && $this->isGalleryHeader($baseCode),
                 ]

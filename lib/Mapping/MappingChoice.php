@@ -32,6 +32,10 @@ final class MappingChoice
 
     public static function fromRule(array $rule): string
     {
+        if (!empty($rule['unconfirmed']) || (string) ($rule['target'] ?? '') === '') {
+            return '';
+        }
+
         $target = strtoupper(trim((string) ($rule['target'] ?? '')));
         if (!str_starts_with($target, 'PROPERTY:')) {
             return $target;

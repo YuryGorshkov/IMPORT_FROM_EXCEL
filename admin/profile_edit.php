@@ -42,6 +42,18 @@ function webenotImportExcelMappingFromRequest(array $rows): array
 
         $column = strtoupper(trim((string) ($row['column'] ?? '')));
         $choice = strtoupper(trim((string) ($row['choice'] ?? '')));
+        if (array_key_exists('choice', $row) && $choice === '') {
+            $mapping[] = [
+                'column' => $column,
+                'label' => trim((string) ($row['label'] ?? '')),
+                'code' => '',
+                'target' => '',
+                'unconfirmed' => true,
+                'required' => isset($row['required']),
+                'transforms' => [['type' => 'trim']],
+            ];
+            continue;
+        }
         if ($choice !== '') {
             $decodedChoice = MappingChoice::decode(
                 $choice,
@@ -359,6 +371,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
                 }
             }
         } elseif (isset($_POST['save']) || isset($_POST['save_and_run'])) {
+            $unconfirmedRule = current(array_filter(
+                $form['mapping'],
+                static fn(array $rule): bool => !empty($rule['unconfirmed'])
+                    || trim((string) ($rule['target'] ?? '')) === ''
+            ));
+            if (is_array($unconfirmedRule)) {
+                throw new InvalidArgumentException(str_replace(
+                    ['#COLUMN#', '#LABEL#'],
+                    [
+                        (string) ($unconfirmedRule['column'] ?? ''),
+                        (string) ($unconfirmedRule['label'] ?? ''),
+                    ],
+                    (string) Loc::getMessage('WIE_PROFILE_MAPPING_VALUE_REQUIRED')
+                ));
+            }
             $mappingTargets = array_values(array_filter(
                 array_column($form['mapping'], 'target'),
                 static fn(string $target): bool => !SectionPath::isTarget($target)
@@ -476,6 +503,7 @@ while ($property = $propertyResult->Fetch()) {
     $iblockPropertyOptions[$iblockId][$propertyCode] = [
         'value' => MappingChoice::existingProperty($propertyCode, $propertyType, $multiple),
         'label' => $optionLabel,
+        'name' => $propertyLabel,
         'code' => $propertyCode,
     ];
 }
@@ -842,6 +870,7 @@ foreach ($errors as $error) {
                             <th class="wie-col-use"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_USE')) ?></th>
                             <th class="wie-col-source"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_COLUMN')) ?></th>
                             <th><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_HEADER')) ?></th>
+                            <th class="wie-col-status"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS')) ?></th>
                             <th><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET')) ?></th>
                             <th class="wie-col-code"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SOURCE_CODE')) ?></th>
                             <th class="wie-col-required"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_REQUIRED')) ?></th>
@@ -855,8 +884,21 @@ foreach ($errors as $error) {
                                 $existingPropertyCode = substr($ruleTarget, 9);
                                 if (isset($selectedIblockProperties[$existingPropertyCode])) {
                                     $choice = (string) $selectedIblockProperties[$existingPropertyCode]['value'];
+                                } elseif (!empty($rule['unconfirmed'])) {
+                                    $sourceName = mb_strtolower(trim((string) ($rule['label'] ?? '')));
+                                    $nameMatches = array_values(array_filter(
+                                        $selectedIblockProperties,
+                                        static fn(array $property): bool => mb_strtolower(
+                                            trim((string) ($property['name'] ?? ''))
+                                        ) === $sourceName
+                                    ));
+                                    if (count($nameMatches) === 1) {
+                                        $choice = (string) $nameMatches[0]['value'];
+                                    }
                                 }
                             }
+                            $isAutomaticChoice = $choice !== ''
+                                && (!empty($rule['auto_selected']) || !empty($rule['unconfirmed']));
                             $isNewProperty = $choice === MappingChoice::PROPERTY_NEW;
                             $newPropertyCode = $isNewProperty && str_starts_with($ruleTarget, 'PROPERTY:')
                                 ? substr($ruleTarget, 9)
@@ -877,8 +919,10 @@ foreach ($errors as $error) {
                                 <td class="wie-col-use"><input type="checkbox" name="mapping_rows[<?= (int) $index ?>][enabled]" value="Y" checked aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_USE')) ?>"></td>
                                 <td><strong><?= htmlspecialcharsbx((string) ($rule['column'] ?? '')) ?></strong><input type="hidden" name="mapping_rows[<?= (int) $index ?>][column]" value="<?= htmlspecialcharsbx((string) ($rule['column'] ?? '')) ?>"></td>
                                 <td><span class="wie-source-label"><?= htmlspecialcharsbx((string) ($rule['label'] ?? '')) ?></span><input type="hidden" name="mapping_rows[<?= (int) $index ?>][label]" value="<?= htmlspecialcharsbx((string) ($rule['label'] ?? '')) ?>"></td>
+                                <td class="wie-col-status"><span class="wie-mapping-status" data-recognized="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_RECOGNIZED')) ?>" data-required="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_REQUIRED')) ?>" data-configured="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_CONFIGURED')) ?>"></span></td>
                                 <td>
-                                    <select class="wie-mapping-choice" name="mapping_rows[<?= (int) $index ?>][choice]" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>">
+                                    <select class="wie-mapping-choice" name="mapping_rows[<?= (int) $index ?>][choice]" aria-label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_TARGET_TYPE')) ?>" data-auto-choice="<?= $isAutomaticChoice ? htmlspecialcharsbx($choice) : '' ?>" required>
+                                        <option value=""<?= $choice === '' ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_SELECT_VALUE')) ?></option>
                                         <optgroup data-existing-properties label="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_GROUP_EXISTING_PROPERTIES')) ?>">
                                             <?php foreach ($selectedIblockProperties as $propertyOption) : ?>
                                                 <option value="<?= htmlspecialcharsbx((string) $propertyOption['value']) ?>"<?= $choice === $propertyOption['value'] ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) $propertyOption['label']) ?></option>
@@ -1093,6 +1137,14 @@ foreach ($errors as $error) {
         if (empty) {
             empty.hidden = isNewProperty;
         }
+        var status = row.querySelector('.wie-mapping-status');
+        if (status) {
+            var state = select.value === ''
+                ? 'required'
+                : (select.getAttribute('data-auto-choice') === select.value ? 'recognized' : 'configured');
+            status.className = 'wie-mapping-status wie-mapping-status-' + state;
+            status.textContent = status.getAttribute('data-' + state) || '';
+        }
     };
     var syncPropertyTypeControls = function () {
         if (!propertyType) {
@@ -1270,20 +1322,47 @@ foreach ($errors as $error) {
             var currentStillExists = Array.prototype.some.call(select.options, function (option) {
                 return option.value === currentValue;
             });
-            if (currentStillExists) {
+            if (currentStillExists && currentValue !== '') {
                 select.value = currentValue;
-            } else if (currentValue.indexOf('EXISTING_PROPERTY:') === 0) {
-                select.value = newPropertyChoice;
+            } else {
+                var row = select.closest('tr');
+                var sourceCode = row
+                    ? row.querySelector('.wie-col-code').getAttribute('data-source-code') || ''
+                    : '';
+                var sourceLabel = row && row.querySelector('.wie-source-label')
+                    ? row.querySelector('.wie-source-label').textContent.trim().toLocaleLowerCase()
+                    : '';
+                var exactProperty = properties.find(function (property) {
+                    return property.code === sourceCode;
+                });
+                if (!exactProperty && sourceLabel !== '') {
+                    var nameMatches = properties.filter(function (property) {
+                        return (property.name || '').trim().toLocaleLowerCase() === sourceLabel;
+                    });
+                    exactProperty = nameMatches.length === 1 ? nameMatches[0] : null;
+                }
+                select.value = exactProperty ? exactProperty.value : '';
+                select.setAttribute('data-auto-choice', exactProperty ? exactProperty.value : '');
             }
             select.setAttribute('data-last-choice', select.value);
             refreshPropertyPresentation(select);
         });
     };
     Array.prototype.forEach.call(mappingChoices, function (select) {
+        var mappingRow = select.closest('tr');
+        var useCheckbox = mappingRow ? mappingRow.querySelector('.wie-col-use input[type="checkbox"]') : null;
+        var syncMappingRequired = function () {
+            select.required = !useCheckbox || useCheckbox.checked;
+        };
+        if (useCheckbox) {
+            useCheckbox.addEventListener('change', syncMappingRequired);
+        }
+        syncMappingRequired();
         select.setAttribute('data-last-choice', select.value);
         refreshPropertyPresentation(select);
         select.addEventListener('change', function () {
             var oldChoice = select.getAttribute('data-last-choice') || '';
+            select.setAttribute('data-auto-choice', '');
             if (select.value === newPropertyChoice) {
                 refreshPropertyPresentation(select);
                 openPropertyDialog(select, oldChoice);
