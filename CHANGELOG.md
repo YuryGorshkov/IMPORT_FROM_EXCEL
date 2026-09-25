@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2 - 2026-09-25
+
+- Added an explanatory block above the mapping table describing how Excel columns are mapped to Bitrix destinations.
+- Added a visible legend for the green automatic, yellow unresolved and blue user-configured mapping states.
+
 ## 0.10.1 - 2026-09-25
 
 - Added the first mapping option `— выбрать значение —` instead of selecting an arbitrary destination.

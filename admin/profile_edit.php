@@ -864,6 +864,24 @@ foreach ($errors as $error) {
             <?php if ($form['mapping'] === []) : ?>
                 <div class="wie-empty"><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_EMPTY')) ?></strong><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_EMPTY_TEXT')) ?></span></div>
             <?php else : ?>
+                <div class="wie-status-help" role="note">
+                    <strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_HELP_TITLE')) ?></strong>
+                    <p><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_HELP_TEXT')) ?></p>
+                    <div class="wie-status-help-list">
+                        <div class="wie-status-help-item">
+                            <span class="wie-mapping-status wie-mapping-status-recognized"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_RECOGNIZED')) ?></span>
+                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_RECOGNIZED_HELP')) ?></span>
+                        </div>
+                        <div class="wie-status-help-item">
+                            <span class="wie-mapping-status wie-mapping-status-required"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_REQUIRED')) ?></span>
+                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_REQUIRED_HELP')) ?></span>
+                        </div>
+                        <div class="wie-status-help-item">
+                            <span class="wie-mapping-status wie-mapping-status-configured"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_CONFIGURED')) ?></span>
+                            <span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_MAPPING_STATUS_CONFIGURED_HELP')) ?></span>
+                        </div>
+                    </div>
+                </div>
                 <div class="wie-mapping-wrap">
                     <table class="wie-mapping">
                         <thead><tr>
