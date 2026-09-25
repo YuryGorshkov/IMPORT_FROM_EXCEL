@@ -6,6 +6,7 @@ use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use WebEnot\ImportExcel\Admin\AdminUi;
 use WebEnot\ImportExcel\Domain\ImportProfile;
+use WebEnot\ImportExcel\Import\SheetSelector;
 use WebEnot\ImportExcel\Orm\JobTable;
 use WebEnot\ImportExcel\Orm\LogTable;
 use WebEnot\ImportExcel\Orm\ProfileTable;
@@ -85,6 +86,34 @@ function webenotImportExcelVerifiedJob(int $jobId): array
     return $job;
 }
 
+function webenotImportExcelSourceFromRequest(string &$sourceToken): array
+{
+    $storage = ServiceFactory::uploads();
+    $uploadError = (int) ($_FILES['source']['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($uploadError === UPLOAD_ERR_OK) {
+        $previousToken = $sourceToken;
+        $sourcePath = $storage->store($_FILES['source']);
+        $sourceToken = $storage->token($sourcePath);
+        if ($previousToken !== '' && $previousToken !== $sourceToken) {
+            $storage->remove($previousToken);
+        }
+        return [$sourcePath, true];
+    }
+    if ($uploadError === UPLOAD_ERR_NO_FILE && $sourceToken !== '') {
+        try {
+            return [$storage->resolve($sourceToken, 86400), false];
+        } catch (Throwable $exception) {
+            $sourceToken = '';
+            throw $exception;
+        }
+    }
+    if ($uploadError !== UPLOAD_ERR_NO_FILE) {
+        return [$storage->store($_FILES['source']), true];
+    }
+
+    throw new InvalidArgumentException((string) Loc::getMessage('WIE_RUN_FILE_REQUIRED'));
+}
+
 function webenotImportExcelValidateStructure(
     ImportProfile $profile,
     string $sourcePath,
@@ -119,45 +148,43 @@ $job = null;
 $jobId = (int) ($_REQUEST['job_id'] ?? 0);
 $selectedProfileId = (int) ($_REQUEST['profile_id'] ?? 0);
 $sourceToken = trim((string) ($_REQUEST['source_token'] ?? ''));
+$selectedSheet = trim((string) ($_REQUEST['sheet'] ?? ''));
+$availableSheets = [];
 $shouldProcess = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     try {
-        if (isset($_POST['check_file'])) {
+        if (isset($_POST['inspect_file']) || isset($_POST['check_file'])) {
             $selectedProfileId = (int) ($_POST['profile_id'] ?? 0);
             $profileRecord = ProfileTable::getByPrimary($selectedProfileId)->fetch();
             if (!$profileRecord || $profileRecord['ACTIVE'] !== 'Y') {
                 throw new InvalidArgumentException((string) Loc::getMessage('WIE_RUN_PROFILE_REQUIRED'));
             }
             $profile = ServiceFactory::profiles()->get($selectedProfileId);
-
-            $uploadError = (int) ($_FILES['source']['error'] ?? UPLOAD_ERR_NO_FILE);
-            if ($uploadError === UPLOAD_ERR_OK) {
-                $sourcePath = ServiceFactory::uploads()->store($_FILES['source']);
-                $sourceToken = ServiceFactory::uploads()->token($sourcePath);
-            } elseif ($uploadError === UPLOAD_ERR_NO_FILE && $sourceToken !== '') {
-                $sourcePath = ServiceFactory::uploads()->resolve($sourceToken, 86400);
-            } elseif ($uploadError !== UPLOAD_ERR_NO_FILE) {
-                $sourcePath = ServiceFactory::uploads()->store($_FILES['source']);
-            } else {
-                throw new InvalidArgumentException((string) Loc::getMessage('WIE_RUN_FILE_REQUIRED'));
-            }
-
-            $sheets = ServiceFactory::reader()->sheets($sourcePath);
+            [$sourcePath, $uploadedNewSource] = webenotImportExcelSourceFromRequest($sourceToken);
+            $availableSheets = ServiceFactory::reader()->sheets($sourcePath);
             $preferredSheet = trim((string) ($profile->sourceConfig['sheet'] ?? ''));
-            $sheet = $preferredSheet !== '' && in_array($preferredSheet, $sheets, true)
-                ? $preferredSheet
-                : (string) ($sheets[0] ?? '');
-            webenotImportExcelValidateStructure($profile, $sourcePath, $sheet !== '' ? $sheet : null);
-
-            $jobId = ServiceFactory::jobs()->create(
-                $selectedProfileId,
-                $sourcePath,
-                $sheet !== '' ? $sheet : null,
-                true,
-                (int) $USER->GetID()
+            $selectedSheet = (new SheetSelector())->select(
+                $availableSheets,
+                $uploadedNewSource ? '' : $selectedSheet,
+                $preferredSheet
             );
-            $shouldProcess = true;
+
+            if (isset($_POST['check_file'])) {
+                if ($selectedSheet === '') {
+                    throw new InvalidArgumentException((string) Loc::getMessage('WIE_RUN_SHEET_REQUIRED'));
+                }
+                webenotImportExcelValidateStructure($profile, $sourcePath, $selectedSheet);
+
+                $jobId = ServiceFactory::jobs()->create(
+                    $selectedProfileId,
+                    $sourcePath,
+                    $selectedSheet,
+                    true,
+                    (int) $USER->GetID()
+                );
+                $shouldProcess = true;
+            }
         } elseif (isset($_POST['commit_verified'])) {
             $verified = webenotImportExcelVerifiedJob((int) ($_POST['verified_job_id'] ?? 0));
             $saveRollback = (string) ($_POST['save_rollback'] ?? '');
@@ -211,6 +238,24 @@ $profiles = ProfileTable::getList([
 ])->fetchAll();
 if ($selectedProfileId < 1 && count($profiles) === 1) {
     $selectedProfileId = (int) $profiles[0]['ID'];
+}
+
+if ($job === null && $sourceToken !== '' && $availableSheets === []) {
+    try {
+        $sourcePath = ServiceFactory::uploads()->resolve($sourceToken, 86400);
+        $availableSheets = ServiceFactory::reader()->sheets($sourcePath);
+        $preferredSheet = '';
+        if ($selectedProfileId > 0) {
+            $profile = ServiceFactory::profiles()->get($selectedProfileId);
+            $preferredSheet = trim((string) ($profile->sourceConfig['sheet'] ?? ''));
+        }
+        $selectedSheet = (new SheetSelector())->select($availableSheets, $selectedSheet, $preferredSheet);
+    } catch (Throwable $exception) {
+        $sourceToken = '';
+        $availableSheets = [];
+        $selectedSheet = '';
+        $errors[] = $exception->getMessage();
+    }
 }
 
 $jobProfile = null;
@@ -373,7 +418,7 @@ foreach ($errors as $error) {
             <div class="wie-step"><span class="wie-step-number">1</span><div><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_STEP_CHECK')) ?></strong><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_STEP_CHECK_TEXT')) ?></span></div></div>
             <div class="wie-step"><span class="wie-step-number">2</span><div><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_STEP_IMPORT')) ?></strong><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_STEP_IMPORT_TEXT')) ?></span></div></div>
         </div>
-        <form method="post" enctype="multipart/form-data">
+        <form id="wie-run-form" method="post" enctype="multipart/form-data">
             <?= bitrix_sessid_post() ?>
             <input type="hidden" name="source_token" value="<?= htmlspecialcharsbx($sourceToken) ?>">
             <section class="wie-section">
@@ -397,13 +442,33 @@ foreach ($errors as $error) {
                             <span class="wie-file-name" id="wie-source-name" data-empty="<?= htmlspecialcharsbx((string) Loc::getMessage($sourceToken !== '' ? 'WIE_RUN_FILE_EMPTY_REPLACE' : 'WIE_RUN_FILE_EMPTY')) ?>"><?= htmlspecialcharsbx((string) Loc::getMessage($sourceToken !== '' ? 'WIE_RUN_FILE_EMPTY_REPLACE' : 'WIE_RUN_FILE_EMPTY')) ?></span>
                         </div>
                     </div>
+                    <?php if ($sourceToken !== '' && $availableSheets !== []) : ?>
+                        <div class="wie-field wie-field-wide wie-sheet-picker">
+                            <label class="wie-label" for="wie-sheet"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_SHEET')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_RUN_SHEET_HINT')); ?></label>
+                            <select id="wie-sheet" name="sheet" required>
+                                <?php if (count($availableSheets) > 1) : ?>
+                                    <option value=""><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_SHEET_CHOOSE')) ?></option>
+                                <?php endif; ?>
+                                <?php foreach ($availableSheets as $sheetName) : ?>
+                                    <option value="<?= htmlspecialcharsbx($sheetName) ?>"<?= $selectedSheet === $sheetName ? ' selected' : '' ?>><?= htmlspecialcharsbx($sheetName) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="wie-field-note"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_SHEETS_FOUND', [
+                                '#COUNT#' => (string) count($availableSheets),
+                            ])) ?></p>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <?php if ($sourceToken !== '') : ?>
                     <div class="wie-file-carried"><span>✓</span><div><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_FILE_CARRIED_TITLE')) ?></strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_FILE_CARRIED_TEXT')) ?></div></div>
                 <?php endif; ?>
                 <div class="wie-safe"><span class="wie-safe-icon">✓</span><div><strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_CHECK_SAFE_TITLE')) ?></strong><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_CHECK_SAFE_TEXT')) ?></div></div>
                 <div class="wie-actions">
-                    <button class="wie-primary wie-primary-large" type="submit" name="check_file" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_CHECK_FILE')) ?></button>
+                    <?php if ($sourceToken !== '' && $availableSheets !== []) : ?>
+                        <button class="wie-primary wie-primary-large" type="submit" name="check_file" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_CHECK_SHEET')) ?></button>
+                    <?php else : ?>
+                        <button id="wie-inspect-file" class="wie-primary wie-primary-large" type="submit" name="inspect_file" value="Y"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_INSPECT_FILE')) ?></button>
+                    <?php endif; ?>
                     <?php if ($selectedProfileId > 0) : ?>
                         <a class="wie-secondary" href="webenot_importexcel_profile_edit.php?ID=<?= $selectedProfileId ?>&lang=<?= urlencode(LANGUAGE_ID) ?>"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_EDIT_PROFILE')) ?></a>
                     <?php else : ?>
@@ -412,6 +477,32 @@ foreach ($errors as $error) {
                 </div>
             </section>
         </form>
+        <script>
+        (function () {
+            var form = document.getElementById('wie-run-form');
+            var file = document.getElementById('wie-source');
+            var profile = document.getElementById('wie-profile');
+            var inspect = document.getElementById('wie-inspect-file');
+            if (!form || !file) {
+                return;
+            }
+            file.addEventListener('change', function () {
+                if (!file.files || file.files.length === 0 || !profile || profile.value === '') {
+                    return;
+                }
+                var submitter = inspect;
+                if (!submitter) {
+                    submitter = document.createElement('button');
+                    submitter.type = 'submit';
+                    submitter.name = 'inspect_file';
+                    submitter.value = 'Y';
+                    submitter.hidden = true;
+                    form.appendChild(submitter);
+                }
+                form.requestSubmit(submitter);
+            });
+        }());
+        </script>
     <?php endif; ?>
 </div>
 <?php require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/epilog_admin.php'; ?>

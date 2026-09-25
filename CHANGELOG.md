@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 - 2026-09-25
+
+- Added workbook inspection immediately after choosing an Excel file.
+- Added an explicit worksheet selector before validation and import, so one workbook can contain several independent catalogs.
+- Kept the same selected worksheet for the dry run and the confirmed real import.
+- Stopped silently falling back to the first worksheet when several sheets are available and no reliable choice exists.
+
 ## 0.11.0 - 2026-09-25
 
 - Added an explicit rollback choice before every real import; no rollback is saved without the user's decision.
