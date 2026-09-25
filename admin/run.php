@@ -233,7 +233,7 @@ foreach ($errors as $error) {
         ?>
         <div class="wie-run-stage">
             <span class="wie-badge <?= $isDryRun ? 'wie-badge-info' : 'wie-badge-success' ?>"><?= htmlspecialcharsbx((string) Loc::getMessage($isDryRun ? 'WIE_RUN_STAGE_CHECK' : 'WIE_RUN_STAGE_IMPORT')) ?></span>
-            <strong><?= htmlspecialcharsbx((string) ($jobProfile['NAME'] ?? ('#' . (int) $job['PROFILE_ID']))) ?></strong>
+            <strong><?= htmlspecialcharsbx((string) ($jobProfile['NAME'] ?? ('ID ' . (int) $job['PROFILE_ID']))) ?></strong>
             <?php if ((string) $job['SHEET'] !== '') : ?><span><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_SELECTED_SHEET', ['#SHEET#' => (string) $job['SHEET']])) ?></span><?php endif; ?>
         </div>
         <section class="wie-section wie-result-section">
@@ -325,7 +325,7 @@ foreach ($errors as $error) {
                         <select id="wie-profile" name="profile_id" required>
                             <option value=""><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_PROFILE_CHOOSE')) ?></option>
                             <?php foreach ($profiles as $profile) : ?>
-                                <option value="<?= (int) $profile['ID'] ?>"<?= $selectedProfileId === (int) $profile['ID'] ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) $profile['NAME']) ?> · #<?= (int) $profile['TARGET_ID'] ?></option>
+                                <option value="<?= (int) $profile['ID'] ?>"<?= $selectedProfileId === (int) $profile['ID'] ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) $profile['NAME']) ?> · ID <?= (int) $profile['TARGET_ID'] ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>

@@ -63,5 +63,5 @@ $MESS['WIE_RUN_FILE_CARRIED_TITLE'] = 'Файл из настройки проф
 $MESS['WIE_RUN_FILE_CARRIED_TEXT'] = ' Можно сразу проверить его либо выбрать здесь другой рабочий файл.';
 $MESS['WIE_RUN_CHECK_SAFE_TITLE'] = 'Сначала только проверка';
 $MESS['WIE_RUN_CHECK_SAFE_TEXT'] = ' На этом шаге модуль ничего не добавляет и не обновляет. Реальный импорт появится отдельной кнопкой после результата.';
-$MESS['WIE_RUN_CHECK_FILE'] = 'Проверить файл';
+$MESS['WIE_RUN_CHECK_FILE'] = 'Проверить рабочий файл';
 $MESS['WIE_RUN_PROFILES'] = 'Настроить профили';

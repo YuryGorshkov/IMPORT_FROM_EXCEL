@@ -69,7 +69,7 @@ $list->AddHeaders([
 while ($record = $result->NavNext(true, 'f_')) {
     $errorCount = LogTable::getCount(['=JOB_ID' => (int) $f_ID, '=LEVEL' => 'error']);
     $row = $list->AddRow((string) $f_ID, $record);
-    $profileName = $profileNames[(int) $f_PROFILE_ID] ?? ('#' . (int) $f_PROFILE_ID);
+    $profileName = $profileNames[(int) $f_PROFILE_ID] ?? ('ID ' . (int) $f_PROFILE_ID);
     $row->AddViewField('PROFILE_ID', '<strong>' . htmlspecialcharsbx($profileName) . '</strong>');
     [$statusMessage, $statusTone] = $statusLabels[(string) $f_STATUS] ?? ['WIE_JOBS_STATUS_UNKNOWN', ''];
     $row->AddViewField('STATUS', AdminUi::badge((string) Loc::getMessage($statusMessage), $statusTone));

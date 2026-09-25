@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.3 - 2026-09-25
+
+- Replaced hash-prefixed IBlock and profile fallbacks with explicit `ID` labels on the import and history pages.
+- Renamed the main validation action to `Проверить рабочий файл` so it matches the first workflow step.
+
 ## 0.10.2 - 2026-09-25
 
 - Added an explanatory block above the mapping table describing how Excel columns are mapped to Bitrix destinations.
