@@ -780,7 +780,11 @@ foreach ($errors as $error) {
                 <div class="wie-grid">
                     <div class="wie-field wie-field-wide">
                         <label class="wie-label" for="wie-sample"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_SAMPLE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_SAMPLE_HINT')); ?></label>
-                        <input id="wie-sample" name="sample" type="file" accept=".xlsx,.xls,.ods,.csv">
+                        <div class="wie-file-picker">
+                            <input class="wie-file-input" id="wie-sample" name="sample" type="file" accept=".xlsx,.xls,.ods,.csv" aria-describedby="wie-sample-name">
+                            <label class="wie-secondary wie-file-select" for="wie-sample"><?= htmlspecialcharsbx((string) Loc::getMessage($previewToken !== '' ? 'WIE_PROFILE_SAMPLE_BUTTON_REPLACE' : 'WIE_PROFILE_SAMPLE_BUTTON')) ?></label>
+                            <span class="wie-file-name" id="wie-sample-name" data-empty="<?= htmlspecialcharsbx((string) Loc::getMessage($previewToken !== '' ? 'WIE_PROFILE_SAMPLE_EMPTY_REPLACE' : 'WIE_PROFILE_SAMPLE_EMPTY')) ?>"><?= htmlspecialcharsbx((string) Loc::getMessage($previewToken !== '' ? 'WIE_PROFILE_SAMPLE_EMPTY_REPLACE' : 'WIE_PROFILE_SAMPLE_EMPTY')) ?></span>
+                        </div>
                         <?php if ($previewToken !== '') : ?>
                             <p class="wie-field-note wie-file-ready"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_PREVIEW_FILE_READY')) ?></p>
                         <?php endif; ?>

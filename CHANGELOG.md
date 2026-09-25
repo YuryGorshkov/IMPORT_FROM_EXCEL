@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.4 - 2026-09-25
+
+- Replaced every browser-default file input in the module with a consistent styled file picker.
+- Added readable selected-file names and context-aware text for choosing or replacing files.
+
 ## 0.10.3 - 2026-09-25
 
 - Replaced hash-prefixed IBlock and profile fallbacks with explicit `ID` labels on the import and history pages.

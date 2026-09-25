@@ -331,7 +331,11 @@ foreach ($errors as $error) {
                     </div>
                     <div class="wie-field wie-field-wide">
                         <label class="wie-label" for="wie-source"><?= htmlspecialcharsbx((string) Loc::getMessage($sourceToken !== '' ? 'WIE_RUN_FILE_REPLACE' : 'WIE_RUN_FILE')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_RUN_FILE_HINT')); ?></label>
-                        <input id="wie-source" type="file" name="source" accept=".xlsx,.xls,.ods,.csv"<?= $sourceToken === '' ? ' required' : '' ?>>
+                        <div class="wie-file-picker">
+                            <input class="wie-file-input" id="wie-source" type="file" name="source" accept=".xlsx,.xls,.ods,.csv" aria-describedby="wie-source-name"<?= $sourceToken === '' ? ' required' : '' ?>>
+                            <label class="wie-secondary wie-file-select" for="wie-source"><?= htmlspecialcharsbx((string) Loc::getMessage($sourceToken !== '' ? 'WIE_RUN_FILE_BUTTON_REPLACE' : 'WIE_RUN_FILE_BUTTON')) ?></label>
+                            <span class="wie-file-name" id="wie-source-name" data-empty="<?= htmlspecialcharsbx((string) Loc::getMessage($sourceToken !== '' ? 'WIE_RUN_FILE_EMPTY_REPLACE' : 'WIE_RUN_FILE_EMPTY')) ?>"><?= htmlspecialcharsbx((string) Loc::getMessage($sourceToken !== '' ? 'WIE_RUN_FILE_EMPTY_REPLACE' : 'WIE_RUN_FILE_EMPTY')) ?></span>
+                        </div>
                     </div>
                 </div>
                 <?php if ($sourceToken !== '') : ?>
