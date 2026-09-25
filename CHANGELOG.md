@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 - 2026-09-25
+
+- Clarified file-selection wording throughout the Russian interface and documentation.
+
 ## 0.12.0 - 2026-09-25
 
 - Added workbook inspection immediately after choosing an Excel file.
