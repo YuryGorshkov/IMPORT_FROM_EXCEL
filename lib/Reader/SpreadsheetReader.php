@@ -116,7 +116,8 @@ final class SpreadsheetReader implements ReaderInterface
     private function configureCsv(Csv $reader, array $options): void
     {
         $reader->setInputEncoding((string) ($options['encoding'] ?? 'UTF-8'));
-        $reader->setDelimiter((string) ($options['delimiter'] ?? ';'));
+        $delimiter = (string) ($options['delimiter'] ?? '');
+        $reader->setDelimiter($delimiter !== '' ? $delimiter : null);
         $reader->setEnclosure((string) ($options['enclosure'] ?? '"'));
         $reader->setEscapeCharacter((string) ($options['escape'] ?? '\\'));
     }

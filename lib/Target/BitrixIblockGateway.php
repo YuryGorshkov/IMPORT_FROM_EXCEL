@@ -145,6 +145,15 @@ final class BitrixIblockGateway implements IblockGatewayInterface
             return null;
         }
         [$scope, $name] = $this->parseTarget($uniqueTarget);
+        if ($scope === 'PROPERTY') {
+            $property = \CIBlockProperty::GetList([], [
+                'IBLOCK_ID' => $iblockId,
+                'CODE' => $name,
+            ])->Fetch();
+            if (!$property) {
+                return null;
+            }
+        }
         $filter = ['IBLOCK_ID' => $iblockId];
         $filter[$scope === 'PROPERTY' ? 'PROPERTY_' . $name : $name] = $value;
         $result = \CIBlockElement::GetList([], $filter, false, ['nTopCount' => 2], ['ID', 'IBLOCK_ID', 'NAME']);

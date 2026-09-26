@@ -64,4 +64,22 @@ final class SpreadsheetReaderPreviewTest extends TestCase
         self::assertSame('Открыть фото', $rows[0]->cell('D'));
         self::assertSame('https://cdn.example.test/product.jpg', $rows[0]->link('D'));
     }
+
+    public function testAutodetectsCommaDelimitedCsvWhenDelimiterIsEmpty(): void
+    {
+        $file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'webenot_' . bin2hex(random_bytes(8)) . '.csv';
+        file_put_contents($file, "Handle,Title,Image Src\nbracelet,Браслет,https://example.test/bracelet.jpg\n");
+
+        try {
+            $reader = new SpreadsheetReader(new SourceFilePolicy());
+            $rows = iterator_to_array($reader->read($file, null, 1, 2, ['delimiter' => '']));
+
+            self::assertSame('Handle', $rows[0]->cell('A'));
+            self::assertSame('Title', $rows[0]->cell('B'));
+            self::assertSame('Image Src', $rows[0]->cell('C'));
+            self::assertSame('Браслет', $rows[1]->cell('B'));
+        } finally {
+            @unlink($file);
+        }
+    }
 }

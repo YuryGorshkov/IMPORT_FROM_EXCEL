@@ -430,7 +430,7 @@ foreach ($errors as $error) {
                         <select id="wie-profile" name="profile_id" required>
                             <option value=""><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_RUN_PROFILE_CHOOSE')) ?></option>
                             <?php foreach ($profiles as $profile) : ?>
-                                <option value="<?= (int) $profile['ID'] ?>"<?= $selectedProfileId === (int) $profile['ID'] ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) $profile['NAME']) ?> · ID <?= (int) $profile['TARGET_ID'] ?></option>
+                                <option value="<?= (int) $profile['ID'] ?>"<?= $selectedProfileId === (int) $profile['ID'] ? ' selected' : '' ?>><?= htmlspecialcharsbx((string) $profile['NAME']) ?> · ID <?= (int) $profile['ID'] ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>

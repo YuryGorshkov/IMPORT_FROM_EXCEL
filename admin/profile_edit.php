@@ -196,7 +196,7 @@ $form = [
         'element_code_source' => 'name',
         'auto_create_properties' => true,
         'stop_on_error' => false,
-        'delimiter' => ';',
+        'delimiter' => '',
         'encoding' => 'UTF-8',
     ],
 ];
@@ -287,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
         'element_code_source' => $elementCodeSource,
         'auto_create_properties' => isset($_POST['auto_create_properties']),
         'stop_on_error' => isset($_POST['stop_on_error']),
-        'delimiter' => (string) ($_POST['delimiter'] ?? ';'),
+        'delimiter' => (string) ($_POST['delimiter'] ?? ''),
         'encoding' => trim((string) ($_POST['encoding'] ?? 'UTF-8')) ?: 'UTF-8',
     ];
     $form['source_config']['sheet'] = $sheet;
@@ -1062,7 +1062,7 @@ foreach ($errors as $error) {
                     <div class="wie-grid">
                         <div class="wie-field">
                             <label class="wie-label" for="wie-delimiter"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_DELIMITER')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_DELIMITER_HINT')); ?></label>
-                            <input id="wie-delimiter" name="delimiter" maxlength="4" value="<?= htmlspecialcharsbx((string) ($form['options']['delimiter'] ?? ';')) ?>">
+                            <input id="wie-delimiter" name="delimiter" maxlength="4" value="<?= htmlspecialcharsbx((string) ($form['options']['delimiter'] ?? '')) ?>" placeholder="<?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_DELIMITER_PLACEHOLDER')) ?>">
                         </div>
                         <div class="wie-field">
                             <label class="wie-label" for="wie-encoding"><?= htmlspecialcharsbx((string) Loc::getMessage('WIE_PROFILE_ENCODING')) ?><?php ShowJSHint((string) Loc::getMessage('WIE_PROFILE_ENCODING_HINT')); ?></label>
