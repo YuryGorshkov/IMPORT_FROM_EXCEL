@@ -7,11 +7,14 @@
 [![Версия](https://img.shields.io/badge/version-0.12.1-2f956e.svg)](install/version.php)
 [![PHP](https://img.shields.io/badge/PHP-8.1%E2%80%938.4-777bb4.svg)](composer.json)
 [![1С-Битрикс](https://img.shields.io/badge/1%D0%A1--%D0%91%D0%B8%D1%82%D1%80%D0%B8%D0%BA%D1%81-D7-1f6d8a.svg)](#требования)
+[![Тесты](https://img.shields.io/badge/tests-78%20passed-2ea44f.svg)](tests/)
 [![Лицензия](https://img.shields.io/badge/license-MIT-0d2230.svg)](LICENSE)
 
 **Понятная настройка для контент-менеджера. Контроль перед записью для администратора.**
 
-[Установить](#установка) · [Как работает](#один-сценарий-от-файла-до-каталога) · [Проверенный каталог](#проверено-на-полном-каталоге) · [Документация](#быстрый-старт)
+[Скачать готовый модуль](https://github.com/YuryGorshkov/IMPORT_FROM_EXCEL/releases/latest) · [Посмотреть результаты CI](https://github.com/YuryGorshkov/IMPORT_FROM_EXCEL/actions)
+
+[Как работает](#один-сценарий-от-файла-до-каталога) · [Проверенный каталог](#проверено-на-полном-каталоге) · [Презентация](output/presentation/IMPORT_FROM_EXCEL_Presentation_universal.pptx) · [Тестовая книга](demo/dummyjson_catalog_194.xlsx) · [Установка](#установка)
 
 </div>
 
@@ -209,6 +212,7 @@ composer install --no-dev --classmap-authoritative
 
 ## Демо-каталог для проверки
 
+- презентация возможностей: [`IMPORT_FROM_EXCEL_Presentation_universal.pptx`](output/presentation/IMPORT_FROM_EXCEL_Presentation_universal.pptx);
 - готовая книга: [`demo/dummyjson_catalog_194.xlsx`](demo/dummyjson_catalog_194.xlsx);
 - генератор книги: [`demo/build/create_dummyjson_catalog.mjs`](demo/build/create_dummyjson_catalog.mjs);
 - исходные данные: [`demo/source`](demo/source/);
