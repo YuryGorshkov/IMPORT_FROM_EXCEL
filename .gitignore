@@ -21,3 +21,13 @@ Thumbs.db
 # Runtime files must stay outside the module repository.
 /runtime/
 /uploads/
+
+# Generated demo and presentation working files.
+/demo/build/node_modules/
+/demo/build/previews/
+/demo/build/reference-deck/
+/demo/build/presentation-preview/
+/demo/build/presentation-final-render/
+/demo/build/temp/
+/demo/*.inspect.ndjson
+/output/presentation/*.inspect.ndjson

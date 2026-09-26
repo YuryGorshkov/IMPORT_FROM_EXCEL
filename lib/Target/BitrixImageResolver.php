@@ -11,6 +11,8 @@ final class BitrixImageResolver
 {
     private const MAX_BYTES = 15_728_640;
 
+    private const DOWNLOAD_ATTEMPTS = 3;
+
     private const ALLOWED_MIME_TYPES = [
         'image/jpeg' => 'jpg',
         'image/png' => 'png',
@@ -126,26 +128,46 @@ final class BitrixImageResolver
 
     private function download(string $source, string $temporaryPath): void
     {
-        if ($this->remoteDownloader !== null) {
-            ($this->remoteDownloader)($source, $temporaryPath, self::MAX_BYTES);
-            return;
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= self::DOWNLOAD_ATTEMPTS; ++$attempt) {
+            try {
+                if ($this->remoteDownloader !== null) {
+                    ($this->remoteDownloader)($source, $temporaryPath, self::MAX_BYTES);
+                    return;
+                }
+
+                $client = new HttpClient([
+                    'socketTimeout' => 10,
+                    'streamTimeout' => 20,
+                    'redirect' => true,
+                    'redirectMax' => 3,
+                    'bodyLengthMax' => self::MAX_BYTES,
+                    'privateIp' => false,
+                    'disableSslVerification' => false,
+                ]);
+                if (!$client->download($source, $temporaryPath)) {
+                    throw new \RuntimeException('Unable to download the image.');
+                }
+                $status = $client->getStatus();
+                if ($status < 200 || $status >= 300) {
+                    throw new \RuntimeException(sprintf('Image server returned HTTP status %d.', $status));
+                }
+
+                return;
+            } catch (\Throwable $exception) {
+                $lastException = $exception;
+                @unlink($temporaryPath);
+                if ($attempt < self::DOWNLOAD_ATTEMPTS && $this->remoteDownloader === null) {
+                    usleep(200_000 * $attempt);
+                }
+            }
         }
 
-        $client = new HttpClient([
-            'socketTimeout' => 10,
-            'streamTimeout' => 20,
-            'redirect' => true,
-            'redirectMax' => 3,
-            'bodyLengthMax' => self::MAX_BYTES,
-            'privateIp' => false,
-            'disableSslVerification' => false,
-        ]);
-        if (!$client->download($source, $temporaryPath)) {
-            throw new \RuntimeException('Unable to download the image.');
-        }
-        $status = $client->getStatus();
-        if ($status < 200 || $status >= 300) {
-            throw new \RuntimeException(sprintf('Image server returned HTTP status %d.', $status));
-        }
+        throw new \RuntimeException(
+            sprintf('Unable to download the image after %d attempts.', self::DOWNLOAD_ATTEMPTS),
+            0,
+            $lastException
+        );
     }
 }

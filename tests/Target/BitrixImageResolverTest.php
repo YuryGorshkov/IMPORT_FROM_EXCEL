@@ -54,6 +54,26 @@ final class BitrixImageResolverTest extends TestCase
         self::assertGreaterThan(0, $resolved['file']['size']);
     }
 
+    public function testRetriesTransientRemoteDownloadFailure(): void
+    {
+        $attempts = 0;
+        $resolver = new BitrixImageResolver(function (string $url, string $path) use (&$attempts): void {
+            ++$attempts;
+            if ($attempts < 3) {
+                throw new \RuntimeException('Temporary CDN failure.');
+            }
+
+            file_put_contents($path, $this->png());
+        });
+
+        $resolved = $resolver->resolve('https://cdn.example.test/retry-picture');
+        $this->temporaryPaths[] = $resolved['temporary_path'];
+
+        self::assertSame(3, $attempts);
+        self::assertSame('retry-picture.png', $resolved['file']['name']);
+        self::assertSame('image/png', $resolved['file']['type']);
+    }
+
     private function png(): string
     {
         return (string) base64_decode(
